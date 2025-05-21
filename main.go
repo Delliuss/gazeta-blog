@@ -9,8 +9,10 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"golang.org/x/crypto/bcrypt"
 )
 
+// Структуры данных
 type Post struct {
 	ID            int
 	Title         string
@@ -28,12 +30,25 @@ type Post struct {
 type User struct {
 	Username string
 	Password string
+	IsAdmin  bool
+	IsBanned bool
 }
 
 var posts []Post
 var mu sync.Mutex
 var db *sql.DB
 
+// Хелперы
+func hashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(bytes), err
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && s[:len(substr)] == substr
+}
+
+// Инициализация БД
 func initDB() {
 	var err error
 	connStr := "user=postgres dbname=go password=0000 host=localhost sslmode=disable"
@@ -42,86 +57,98 @@ func initDB() {
 		panic(err)
 	}
 
-	// Проверяем соединение с БД
 	err = db.Ping()
 	if err != nil {
 		panic(err)
 	}
 
-	// Создаем таблицы, если они не существуют
+	// Сначала создаем таблицу users с нужными колонками
 	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS users (
-			username TEXT NOT NULL PRIMARY KEY,
-			password TEXT NOT NULL
-		);
-		
-		CREATE TABLE IF NOT EXISTS posts (
-			id SERIAL PRIMARY KEY,
-			title TEXT NOT NULL,
-			content TEXT NOT NULL,
-			image_url TEXT,
-			location TEXT NOT NULL,
-			rating INT NOT NULL,
-			likes INT DEFAULT 0,
-			dislikes INT DEFAULT 0,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			author TEXT NOT NULL,
-			is_recommended BOOLEAN DEFAULT FALSE,
-			FOREIGN KEY (author) REFERENCES users(username) ON DELETE CASCADE
-		);
-		
-		CREATE TABLE IF NOT EXISTS post_votes (
-			post_id INT NOT NULL,
-			username TEXT NOT NULL,
-			vote_type TEXT NOT NULL,
-			PRIMARY KEY (post_id, username),
-			FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-			FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-		);
-	`)
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT NOT NULL PRIMARY KEY,
+            password TEXT NOT NULL,
+            is_admin BOOLEAN DEFAULT FALSE,
+            is_banned BOOLEAN DEFAULT FALSE
+        );
+    `)
 	if err != nil {
 		panic(err)
 	}
 
-	// Добавляем тестовые данные, если их нет
+	// Затем остальные таблицы
+	_, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS posts (
+            id SERIAL PRIMARY KEY,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            image_url TEXT,
+            location TEXT NOT NULL,
+            rating INT NOT NULL,
+            likes INT DEFAULT 0,
+            dislikes INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            author TEXT NOT NULL,
+            is_recommended BOOLEAN DEFAULT FALSE,
+            FOREIGN KEY (author) REFERENCES users(username) ON DELETE CASCADE
+        );
+        
+        CREATE TABLE IF NOT EXISTS post_votes (
+            post_id INT NOT NULL,
+            username TEXT NOT NULL,
+            vote_type TEXT NOT NULL,
+            PRIMARY KEY (post_id, username),
+            FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+            FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+        );
+    `)
+	if err != nil {
+		panic(err)
+	}
+
+	// Добавляем колонки, если их вдруг нет (дополнительная проверка)
+	db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE")
+	db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE")
+
+	ensureAdminExists()
 	seedTestData()
 }
-func seedTestData() {
-	// Проверяем, есть ли уже пользователи
-	var userCount int
-	err := db.QueryRow("SELECT COUNT(*) FROM users").Scan(&userCount)
+
+func ensureAdminExists() {
+	var adminExists bool
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = 'admin')").Scan(&adminExists)
 	if err != nil {
 		panic(err)
 	}
 
-	if userCount == 0 {
-		// Добавляем тестовых пользователей
-		_, err = db.Exec(`
-			INSERT INTO users (username, password) VALUES 
-			('foodlover', 'gourmet123'),
-			('traveler', 'wanderlust456');
-		`)
+	if !adminExists {
+		hashedPass, _ := hashPassword("admin123")
+		_, err = db.Exec("INSERT INTO users (username, password, is_admin, is_banned) VALUES ($1, $2, $3, $4)",
+			"admin", hashedPass, true, false)
 		if err != nil {
 			panic(err)
 		}
+	}
+}
 
-		// Добавляем тестовые посты
-		_, err = db.Exec(`
-			INSERT INTO posts 
-			(title, content, image_url, location, rating, author, is_recommended) 
-			VALUES 
-			('La Pergola - Рим', 'Лучший вид на город и потрясающая кухня!', 'https://example.com/lapergola.jpg', 'Рим, Италия', 5, 'foodlover', TRUE),
-			('Sukiyabashi Jiro - Токио', 'Легендарные суши от мастера', 'https://example.com/jiro.jpg', 'Токио, Япония', 5, 'traveler', TRUE),
-			('Le Jules Verne - Париж', 'Ужин с видом на Эйфелеву башню', 'https://example.com/julesverne.jpg', 'Париж, Франция', 4, 'foodlover', FALSE);
-		`)
+func seedTestData() {
+	var adminExists bool
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = 'admin')").Scan(&adminExists)
+	if err != nil {
+		panic(err)
+	}
+
+	if !adminExists {
+		hashedPass, _ := hashPassword("admin123")
+		_, err = db.Exec("INSERT INTO users (username, password, is_admin, is_banned) VALUES ($1, $2, $3, $4)",
+			"admin", hashedPass, true, false)
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	// Загружаем посты из базы
 	loadPostsFromDB()
 }
+
 func loadPostsFromDB() {
 	rows, err := db.Query(`
 		SELECT id, title, content, image_url, location, rating, likes, dislikes, 
@@ -152,80 +179,73 @@ func loadPostsFromDB() {
 	}
 }
 
+// Middleware
+func adminOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, err := r.Cookie("username")
+		if err != nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+
+		var isAdmin bool
+		err = db.QueryRow("SELECT is_admin FROM users WHERE username = $1", username.Value).Scan(&isAdmin)
+		if err != nil || !isAdmin {
+			http.Error(w, "Доступ запрещён: требуется права администратора", http.StatusForbidden)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
+// Обработчики
 func homePage(w http.ResponseWriter, r *http.Request) {
-	tmpl := `
-	<!DOCTYPE html>
-	<html>
-	<head>
+	if cookie, err := r.Cookie("username"); err == nil {
+		var isBanned bool
+		db.QueryRow("SELECT is_banned FROM users WHERE username = $1", cookie.Value).Scan(&isBanned)
+		if isBanned {
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprintf(w, "<h1>Ваш аккаунт заблокирован</h1><p>Обратитесь к администратору.</p>")
+			return
+		}
+	}
+
+	tmpl := `<!DOCTYPE html><html><head>
 		<title>Вкусная еда в путешествиях</title>
-		<style>
-			.post { border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
-			.likes { color: green; font-weight: bold; }
-			.dislikes { color: red; font-weight: bold; }
-			.recommended { background-color: #f8fff8; border-left: 4px solid #4CAF50; }
-			.rating { color: #FFA500; font-weight: bold; }
-			.location { color: #666; font-style: italic; }
-			.author { font-size: 0.9em; color: #333; }
-			.date { font-size: 0.8em; color: #999; }
-		</style>
-	</head>
-	<body>
+		<style>.post{border:1px solid #ddd;padding:15px;margin-bottom:20px}
+		.recommended{background:#f8fff8;border-left:4px solid #4CAF50}</style>
+		</head><body>
 		<h1>Вкусная еда в путешествиях</h1>
-		
 		{{if .Username}}
-			<p>Добро пожаловать, {{.Username}}! | <a href="/profile">Мой профиль</a> | <a href="/new-post">Новый пост</a> | <a href="/logout">Выйти</a></p>
-		{{else}}
-			<p><a href="/login">Войти</a> | <a href="/register">Зарегистрироваться</a></p>
-		{{end}}
-		
-		<form method="GET" action="/" style="margin-bottom: 20px;">
-			<input type="text" name="search" placeholder="Поиск по местоположению или названию" style="padding: 8px; width: 300px;">
-			<input type="submit" value="Поиск" style="padding: 8px 15px;">
-		</form>
-		
+			<p>Добро пожаловать, {{.Username}}! | 
+			<a href="/profile">Профиль</a> | 
+			{{if .IsAdmin}}<a href="/admin">Админ-панель</a> | {{end}}
+			<a href="/logout">Выйти</a></p>
+		{{else}}<p><a href="/login">Войти</a> | <a href="/register">Регистрация</a></p>{{end}}
+		<form method="GET" action="/"><input type="text" name="search" placeholder="Поиск...">
+		<input type="submit" value="Найти"></form>
 		<h2>Последние отзывы</h2>
-		{{if .Posts}}
-			{{range .Posts}}
-				<div class="post {{if .IsRecommended}}recommended{{end}}">
-					<h3>{{.Title}}</h3>
-					<p class="location">{{.Location}}</p>
-					<p class="rating">Оценка: {{.Rating}}/5 {{if .IsRecommended}}⭐ Рекомендую!{{end}}</p>
-					{{if .ImageURL}}<img src="{{.ImageURL}}" alt="{{.Title}}" style="max-width: 300px; margin: 10px 0;">{{end}}
-					<p>{{.Content}}</p>
-					<div style="margin-top: 15px;">
-						<span class="likes">👍 {{.Likes}}</span> | 
-						<span class="dislikes">👎 {{.Dislikes}}</span>
-						<span style="float: right;">
-							<span class="author">{{.Author}}</span>, 
-							<span class="date">{{.CreatedAt.Format "02.01.2006 15:04"}}</span>
-						</span>
-					</div>
-					
-					{{if $.Username}}
-						<div style="margin-top: 10px;">
-							<form method="POST" action="/like" style="display: inline;">
-								<input type="hidden" name="post_id" value="{{.ID}}">
-								<input type="hidden" name="action" value="like">
-								<input type="submit" value="👍 Нравится" style="padding: 5px 10px;">
-							</form>
-							<form method="POST" action="/like" style="display: inline;">
-								<input type="hidden" name="post_id" value="{{.ID}}">
-								<input type="hidden" name="action" value="dislike">
-								<input type="submit" value="👎 Не нравится" style="padding: 5px 10px;">
-							</form>
-						</div>
-					{{end}}
-				</div>
+		{{range .Posts}}<div class="post {{if .IsRecommended}}recommended{{end}}">
+			<h3>{{.Title}}</h3><p>{{.Location}} • {{.CreatedAt.Format "02.01.2006"}}</p>
+			<p>Оценка: {{.Rating}}/5 {{if .IsRecommended}}⭐{{end}}</p>
+			{{if .ImageURL}}<img src="{{.ImageURL}}" style="max-width:300px">{{end}}
+			<p>{{.Content}}</p>
+			<p>Автор: {{.Author}} • 👍 {{.Likes}} 👎 {{.Dislikes}}</p>
+			{{if $.Username}}<form method="POST" action="/like" style="display:inline">
+				<input type="hidden" name="post_id" value="{{.ID}}">
+				<input type="hidden" name="action" value="like">
+				<button type="submit">👍</button></form>
+				<form method="POST" action="/like" style="display:inline">
+				<input type="hidden" name="post_id" value="{{.ID}}">
+				<input type="hidden" name="action" value="dislike">
+				<button type="submit">👎</button></form>
 			{{end}}
-		{{else}}
-			<p>Пока нет отзывов. Будьте первым!</p>
-		{{end}}
-	</body>
-	</html>`
+		</div>{{else}}<p>Нет отзывов</p>{{end}}
+		</body></html>`
 
 	search := r.URL.Query().Get("search")
 	var filteredPosts []Post
-
 	for _, post := range posts {
 		if search == "" || contains(post.Title, search) || contains(post.Location, search) {
 			filteredPosts = append(filteredPosts, post)
@@ -233,20 +253,109 @@ func homePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	username := ""
+	var isAdmin bool
 	if cookie, err := r.Cookie("username"); err == nil {
 		username = cookie.Value
-	}
-
-	data := struct {
-		Posts    []Post
-		Username string
-	}{
-		Posts:    filteredPosts,
-		Username: username,
+		db.QueryRow("SELECT is_admin FROM users WHERE username = $1", username).Scan(&isAdmin)
 	}
 
 	t, _ := template.New("webpage").Parse(tmpl)
-	t.Execute(w, data)
+	t.Execute(w, struct {
+		Posts    []Post
+		Username string
+		IsAdmin  bool
+	}{
+		filteredPosts,
+		username,
+		isAdmin,
+	})
+}
+
+func adminPanel(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query("SELECT username, is_admin, is_banned FROM users ORDER BY username")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.Username, &u.IsAdmin, &u.IsBanned); err == nil {
+			users = append(users, u)
+		}
+	}
+
+	postsRows, err := db.Query("SELECT id, title, author FROM posts ORDER BY created_at DESC")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer postsRows.Close()
+
+	var allPosts []Post
+	for postsRows.Next() {
+		var p Post
+		if err := postsRows.Scan(&p.ID, &p.Title, &p.Author); err == nil {
+			allPosts = append(allPosts, p)
+		}
+	}
+
+	tmpl := `<!DOCTYPE html><html><head><title>Админ-панель</title>
+		<style>table{width:100%} .banned{background:#ffdddd} .admin{background:#ddffdd}</style>
+		</head><body>
+		<h1>Админ-панель</h1><a href="/">На главную</a>
+		<h2>Пользователи</h2>
+		<table><tr><th>Имя</th><th>Статус</th><th>Действия</th></tr>
+		{{range .Users}}<tr class="{{if .IsBanned}}banned{{else if .IsAdmin}}admin{{end}}">
+		<td>{{.Username}}</td>
+		<td>{{if .IsAdmin}}Админ{{else if .IsBanned}}Заблокирован{{else}}Обычный{{end}}</td>
+		<td>{{if not .IsAdmin}}<form action="/admin/toggle-ban" method="POST" style="display:inline">
+			<input type="hidden" name="username" value="{{.Username}}">
+			<button type="submit">{{if .IsBanned}}Разблокировать{{else}}Заблокировать{{end}}</button>
+		</form>{{end}}</td></tr>{{end}}</table>
+		<h2>Все посты</h2>
+		<table><tr><th>ID</th><th>Название</th><th>Автор</th><th>Действия</th></tr>
+		{{range .Posts}}<tr><td>{{.ID}}</td><td>{{.Title}}</td><td>{{.Author}}</td>
+		<td><a href="/edit-post?id={{.ID}}">Редактировать</a> | 
+		<form action="/admin/delete-post" method="POST" style="display:inline">
+			<input type="hidden" name="post_id" value="{{.ID}}">
+			<button type="submit">Удалить</button>
+		</form></td></tr>{{end}}</table>
+		</body></html>`
+
+	t := template.Must(template.New("admin").Parse(tmpl))
+	t.Execute(w, struct {
+		Users []User
+		Posts []Post
+	}{users, allPosts})
+}
+
+func toggleBanUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+	_, err := db.Exec("UPDATE users SET is_banned = NOT is_banned WHERE username = $1 AND is_admin = FALSE",
+		r.FormValue("username"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+func adminDeletePost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+	postID := r.FormValue("post_id")
+	db.Exec("DELETE FROM post_votes WHERE post_id = $1", postID)
+	db.Exec("DELETE FROM posts WHERE id = $1", postID)
+	loadPostsFromDB()
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
 func registerPage(w http.ResponseWriter, r *http.Request) {
@@ -254,9 +363,14 @@ func registerPage(w http.ResponseWriter, r *http.Request) {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 
-		mu.Lock()
-		_, err := db.Exec("INSERT INTO users (username, password) VALUES ($1, $2)", username, password)
-		mu.Unlock()
+		hashedPass, err := hashPassword(password)
+		if err != nil {
+			http.Error(w, "Ошибка хеширования пароля", http.StatusInternalServerError)
+			return
+		}
+
+		_, err = db.Exec("INSERT INTO users (username, password, is_admin, is_banned) VALUES ($1, $2, $3, $4)",
+			username, hashedPass, false, false)
 
 		if err != nil {
 			http.Error(w, "Ошибка регистрации: имя пользователя уже занято", http.StatusInternalServerError)
@@ -293,18 +407,34 @@ func loginPage(w http.ResponseWriter, r *http.Request) {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 
-		var storedPassword string
-		err := db.QueryRow("SELECT password FROM users WHERE username = $1", username).Scan(&storedPassword)
+		var storedHash string
+		var isBanned bool
+		err := db.QueryRow("SELECT password, is_banned FROM users WHERE username = $1", username).
+			Scan(&storedHash, &isBanned)
 
-		if err != nil || storedPassword != password {
-			http.Error(w, "Неверное имя пользователя или пароль", http.StatusUnauthorized)
+		if err != nil {
+			// Пользователь не найден
+			http.Error(w, "Неверные данные", http.StatusUnauthorized)
 			return
 		}
 
+		// Сравниваем хеш пароля
+		if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password)); err != nil {
+			http.Error(w, "Неверные данные", http.StatusUnauthorized)
+			return
+		}
+
+		if isBanned {
+			http.Error(w, "Аккаунт заблокирован", http.StatusForbidden)
+			return
+		}
+
+		// Устанавливаем куки при успешной аутентификации
 		http.SetCookie(w, &http.Cookie{
-			Name:  "username",
-			Value: username,
-			Path:  "/",
+			Name:    "username",
+			Value:   username,
+			Path:    "/",
+			Expires: time.Now().Add(24 * time.Hour),
 		})
 
 		http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -376,10 +506,10 @@ func profilePage(w http.ResponseWriter, r *http.Request) {
 
 	// Получаем посты пользователя
 	rows, err := db.Query(`
-        SELECT id, title, content, image_url, location, rating, likes, dislikes, 
-               created_at, is_recommended 
-        FROM posts 
-        WHERE author = $1 
+        SELECT id, title, content, image_url, location, rating, likes, dislikes,
+               created_at, is_recommended
+        FROM posts
+        WHERE author = $1
         ORDER BY created_at DESC`,
 		username.Value)
 	if err != nil {
@@ -447,8 +577,9 @@ func profilePage(w http.ResponseWriter, r *http.Request) {
             </div>
         </div>
 
+
         <h2>Мои отзывы ({{len .Posts}})</h2>
-        
+       
         {{if .Posts}}
             {{range .Posts}}
                 <div class="post {{if .IsRecommended}}recommended-border{{end}}">
@@ -511,8 +642,8 @@ func newPostPage(w http.ResponseWriter, r *http.Request) {
 		isRecommended := r.FormValue("is_recommended") == "on"
 
 		_, err := db.Exec(`
-            INSERT INTO posts 
-            (title, content, image_url, location, rating, author, is_recommended) 
+            INSERT INTO posts
+            (title, content, image_url, location, rating, author, is_recommended)
             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 			title, content, imageURL, location, rating, username.Value, isRecommended)
 
@@ -572,15 +703,23 @@ func newPostPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func editPostPage(w http.ResponseWriter, r *http.Request) {
-	// Проверяем авторизацию пользователя
+	// Проверка авторизации
 	username, err := r.Cookie("username")
 	if err != nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
+	// Проверка админских прав
+	var isAdmin bool
+	err = db.QueryRow("SELECT is_admin FROM users WHERE username = $1", username.Value).Scan(&isAdmin)
+	if err != nil {
+		http.Error(w, "Ошибка проверки прав", http.StatusInternalServerError)
+		return
+	}
+
 	if r.Method == "POST" {
-		// Обработка отправки формы редактирования
+		// Обработка формы редактирования
 		postID := r.FormValue("id")
 		title := r.FormValue("title")
 		content := r.FormValue("content")
@@ -589,13 +728,31 @@ func editPostPage(w http.ResponseWriter, r *http.Request) {
 		rating := r.FormValue("rating")
 		isRecommended := r.FormValue("is_recommended") == "on"
 
+		// Проверяем существование поста и авторство (если не админ)
+		var author string
+		err := db.QueryRow("SELECT author FROM posts WHERE id = $1", postID).Scan(&author)
+		if err != nil {
+			http.Error(w, "Пост не найден", http.StatusNotFound)
+			return
+		}
+
+		if !isAdmin && author != username.Value {
+			http.Error(w, "Вы можете редактировать только свои посты", http.StatusForbidden)
+			return
+		}
+
 		// Обновляем пост в базе данных
-		_, err := db.Exec(`
-            UPDATE posts 
-            SET title = $1, content = $2, image_url = $3, location = $4, 
-                rating = $5, is_recommended = $6
-            WHERE id = $7 AND author = $8`,
-			title, content, imageURL, location, rating, isRecommended, postID, username.Value)
+		_, err = db.Exec(`
+            UPDATE posts SET
+                title = $1,
+                content = $2,
+                image_url = $3,
+                location = $4,
+                rating = $5,
+                is_recommended = $6,
+                created_at = created_at  // Сохраняем оригинальную дату создания
+            WHERE id = $7`,
+			title, content, imageURL, location, rating, isRecommended, postID)
 
 		if err != nil {
 			http.Error(w, "Ошибка обновления поста: "+err.Error(), http.StatusInternalServerError)
@@ -616,12 +773,20 @@ func editPostPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var post Post
-	err = db.QueryRow(`
-        SELECT id, title, content, image_url, location, rating, is_recommended 
-        FROM posts 
-        WHERE id = $1 AND author = $2`,
-		postID, username.Value).
-		Scan(&post.ID, &post.Title, &post.Content, &post.ImageURL, &post.Location, &post.Rating, &post.IsRecommended)
+	query := `
+        SELECT id, title, content, image_url, location, rating, is_recommended
+        FROM posts WHERE id = $1`
+	args := []interface{}{postID}
+
+	// Если не админ - проверяем авторство
+	if !isAdmin {
+		query += " AND author = $2"
+		args = append(args, username.Value)
+	}
+
+	err = db.QueryRow(query, args...).
+		Scan(&post.ID, &post.Title, &post.Content, &post.ImageURL,
+			&post.Location, &post.Rating, &post.IsRecommended)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -632,6 +797,7 @@ func editPostPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Рендерим шаблон
 	tmpl := `
     <!DOCTYPE html>
     <html>
@@ -647,25 +813,32 @@ func editPostPage(w http.ResponseWriter, r *http.Request) {
                 margin-bottom: 10px;
             }
             textarea { height: 150px; }
-            .submit-btn { background: #4CAF50; color: white; padding: 10px 15px; border: none; cursor: pointer; }
+            .submit-btn { 
+                background: #4CAF50; 
+                color: white; 
+                padding: 10px 15px; 
+                border: none; 
+                cursor: pointer; 
+            }
             .submit-btn:hover { background: #45a049; }
         </style>
     </head>
     <body>
         <h1>Редактировать отзыв</h1>
+        {{if .IsAdmin}}<p style="color: red;">Вы редактируете этот пост как администратор</p>{{end}}
         <form method="POST">
             <input type="hidden" name="id" value="{{.ID}}">
-            
+           
             <div class="form-group">
                 <label>Название заведения:</label>
                 <input type="text" name="title" value="{{.Title}}" required>
             </div>
-            
+           
             <div class="form-group">
                 <label>Местоположение (город, страна):</label>
                 <input type="text" name="location" value="{{.Location}}" required>
             </div>
-            
+           
             <div class="form-group">
                 <label>Оценка (1-5):</label>
                 <select name="rating" required>
@@ -676,32 +849,44 @@ func editPostPage(w http.ResponseWriter, r *http.Request) {
                     <option value="5" {{if eq .Rating 5}}selected{{end}}>5</option>
                 </select>
             </div>
-            
+           
             <div class="form-group">
                 <label>URL изображения:</label>
                 <input type="text" name="image_url" value="{{.ImageURL}}">
             </div>
-            
+           
             <div class="form-group">
                 <label>Отзыв:</label>
                 <textarea name="content" required>{{.Content}}</textarea>
             </div>
-            
+           
             <div class="form-group">
                 <label>
                     <input type="checkbox" name="is_recommended" {{if .IsRecommended}}checked{{end}}>
                     Рекомендую это место
                 </label>
             </div>
-            
+           
             <button type="submit" class="submit-btn">Сохранить изменения</button>
         </form>
         <a href="/profile">Вернуться в профиль</a>
     </body>
     </html>`
 
-	t, _ := template.New("editPost").Parse(tmpl)
-	t.Execute(w, post)
+	// Добавляем флаг isAdmin в данные для шаблона
+	data := struct {
+		Post
+		IsAdmin bool
+	}{
+		Post:    post,
+		IsAdmin: isAdmin,
+	}
+
+	t := template.Must(template.New("editPost").Parse(tmpl))
+	err = t.Execute(w, data)
+	if err != nil {
+		http.Error(w, "Ошибка отображения страницы: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func likeHandler(w http.ResponseWriter, r *http.Request) {
@@ -733,7 +918,7 @@ func likeHandler(w http.ResponseWriter, r *http.Request) {
 	var exists bool
 	err = db.QueryRow(`
         SELECT EXISTS(
-            SELECT 1 FROM post_votes 
+            SELECT 1 FROM post_votes
             WHERE post_id = $1 AND username = $2
         )`, postID, username.Value).Scan(&exists)
 
@@ -749,8 +934,8 @@ func likeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Обновляем счетчик лайков/дизлайков
 	_, err = db.Exec(`
-        UPDATE posts 
-        SET `+column+` = `+column+` + 1 
+        UPDATE posts
+        SET `+column+` = `+column+` + 1
         WHERE id = $1`, postID)
 
 	if err != nil {
@@ -760,7 +945,7 @@ func likeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Записываем факт голосования
 	_, err = db.Exec(`
-        INSERT INTO post_votes (post_id, username, vote_type) 
+        INSERT INTO post_votes (post_id, username, vote_type)
         VALUES ($1, $2, $3)`,
 		postID, username.Value, action)
 
@@ -773,16 +958,14 @@ func likeHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, r.Referer(), http.StatusSeeOther)
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && s[:len(substr)] == substr
+func startsWith(s, prefix string) bool {
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
 
 func main() {
-	// Инициализация базы данных
 	initDB()
 	defer db.Close()
 
-	// Настройка маршрутов
 	http.HandleFunc("/", homePage)
 	http.HandleFunc("/register", registerPage)
 	http.HandleFunc("/login", loginPage)
@@ -792,7 +975,11 @@ func main() {
 	http.HandleFunc("/edit-post", editPostPage)
 	http.HandleFunc("/like", likeHandler)
 
-	// Запуск сервера
+	// Админ-роуты
+	http.HandleFunc("/admin", adminOnly(adminPanel))
+	http.HandleFunc("/admin/toggle-ban", adminOnly(toggleBanUser))
+	http.HandleFunc("/admin/delete-post", adminOnly(adminDeletePost))
+
 	fmt.Println("Сервер запущен на http://localhost:8081")
 	http.ListenAndServe(":8081", nil)
 }
