@@ -17,7 +17,7 @@ import (
 )
 
 func initTemplates() (*template.Template, error) {
-	tmpl, err := template.New("").Funcs(template.FuncMap{
+	return template.New("").Funcs(template.FuncMap{
 		"formatDate": func(t time.Time) string {
 			return t.Format("02.01.2006 15:04")
 		},
@@ -28,33 +28,28 @@ func initTemplates() (*template.Template, error) {
 			return s[:n] + "..."
 		},
 	}).ParseGlob("templates/*.html")
-	return tmpl, err
 }
 
 func main() {
-	// Инициализация шаблонов
 	tmpl, err := initTemplates()
 	if err != nil {
 		panic(fmt.Sprintf("Не удалось загрузить шаблоны: %v", err))
 	}
 
-	// Инициализация базы данных
 	database, err := db.New("user=postgres dbname=go password=0000 host=localhost sslmode=disable")
 	if err != nil {
 		panic(fmt.Sprintf("Не удалось подключиться к БД: %v", err))
 	}
 	defer database.Close()
 
-	// Инициализация репозиториев
 	userRepo := users.NewUserRepository(database.DB)
 	postRepo := posts.NewPostRepository(database.DB)
 
-	// Создаем экземпляры обработчиков
 	authHandler := authentication.NewAuthHandler(userRepo, tmpl)
 	adminHandler := admin.NewAdminHandler(userRepo, postRepo, tmpl)
 	appHandlers := handlers.NewAppHandlers(authHandler, userRepo, postRepo, adminHandler, tmpl)
 
-	// Настройка маршрутов
+	// Основные маршруты
 	http.HandleFunc("/", appHandlers.HomePage)
 	http.HandleFunc("/register", authHandler.RegisterPage)
 	http.HandleFunc("/login", authHandler.LoginPage)
@@ -64,7 +59,7 @@ func main() {
 	http.HandleFunc("/edit-post", appHandlers.EditPostPage)
 	http.HandleFunc("/like", appHandlers.LikeHandler)
 
-	// Админ-роуты
+	// Админские маршруты
 	http.HandleFunc("/admin", appHandlers.AdminOnly(adminHandler.AdminPanel))
 	http.HandleFunc("/admin/toggle-ban", appHandlers.AdminOnly(adminHandler.ToggleBanUser))
 	http.HandleFunc("/admin/delete-post", appHandlers.AdminOnly(adminHandler.DeletePost))

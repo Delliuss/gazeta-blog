@@ -2,51 +2,21 @@ package handlers
 
 import (
 	"database/sql"
-	"fmt"
-	"html/template"
 	"net/http"
 	"strconv"
 
-	"gox2/admin"
-	"gox2/authentication"
 	"gox2/models"
-	"gox2/posts"
-	"gox2/users"
 )
 
-// AppHandlers содержит все обработчики приложения
-type AppHandlers struct {
-	auth  *authentication.AuthHandler
-	users *users.UserRepository
-	posts *posts.PostRepository
-	admin *admin.AdminHandler
-	tmpl  *template.Template
-}
-
-func NewAppHandlers(
-	auth *authentication.AuthHandler,
-	users *users.UserRepository,
-	posts *posts.PostRepository,
-	admin *admin.AdminHandler,
-	tmpl *template.Template,
-) *AppHandlers {
-	return &AppHandlers{
-		auth:  auth,
-		users: users,
-		posts: posts,
-		admin: admin,
-		tmpl:  tmpl,
-	}
-}
-
-// homePage отображает главную страницу
+// HomePage отображает главную страницу со списком постов
+// Поддерживает поиск по заголовку и местоположению через параметр ?search=
+// GET /
 func (h *AppHandlers) HomePage(w http.ResponseWriter, r *http.Request) {
-	// Проверка блокировки пользователя
 	if cookie, err := r.Cookie("username"); err == nil {
 		user, err := h.users.GetUser(cookie.Value)
 		if err == nil && user.IsBanned {
 			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprintf(w, "<h1>Ваш аккаунт заблокирован</h1><p>Обратитесь к администратору.</p>")
+			w.Write([]byte("<h1>Ваш аккаунт заблокирован</h1><p>Обратитесь к администратору.</p>"))
 			return
 		}
 	}
@@ -89,45 +59,9 @@ func (h *AppHandlers) HomePage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// profilePage отображает профиль пользователя
-func (h *AppHandlers) ProfilePage(w http.ResponseWriter, r *http.Request) {
-	username, err := r.Cookie("username")
-	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	if r.Method == "POST" && r.FormValue("delete") != "" {
-		postID := r.FormValue("delete")
-		if err := h.posts.DeletePost(postID); err != nil {
-			http.Error(w, "Ошибка при удалении поста: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		http.Redirect(w, r, "/profile", http.StatusSeeOther)
-		return
-	}
-
-	userPosts, err := h.posts.GetUserPosts(username.Value)
-	if err != nil {
-		http.Error(w, "Ошибка загрузки постов: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	data := struct {
-		Username string
-		Posts    []models.Post
-	}{
-		Username: username.Value,
-		Posts:    userPosts,
-	}
-
-	err = h.tmpl.ExecuteTemplate(w, "profile.html", data)
-	if err != nil {
-		http.Error(w, "Ошибка отображения страницы: "+err.Error(), http.StatusInternalServerError)
-	}
-}
-
-// newPostPage отображает форму создания нового поста
+// NewPostPage отображает форму создания нового поста
+// GET /new-post - форма
+// POST /new-post - создание поста
 func (h *AppHandlers) NewPostPage(w http.ResponseWriter, r *http.Request) {
 	username, err := r.Cookie("username")
 	if err != nil {
@@ -141,17 +75,12 @@ func (h *AppHandlers) NewPostPage(w http.ResponseWriter, r *http.Request) {
 		imageURL := r.FormValue("image_url")
 		location := r.FormValue("location")
 		isRecommended := r.FormValue("is_recommended") == "on"
-		ratingStr := r.FormValue("rating")
-		rating, err := strconv.Atoi(ratingStr)
-		if err != nil {
+		rating, err := strconv.Atoi(r.FormValue("rating"))
+		if err != nil || rating < 1 || rating > 5 {
 			http.Error(w, "Оценка должна быть числом от 1 до 5", http.StatusBadRequest)
 			return
 		}
 
-		if rating < 1 || rating > 5 {
-			http.Error(w, "Оценка должна быть от 1 до 5", http.StatusBadRequest)
-			return
-		}
 		if err := h.posts.CreatePost(title, content, imageURL, location, username.Value, rating, isRecommended); err != nil {
 			http.Error(w, "Ошибка создания поста", http.StatusInternalServerError)
 			return
@@ -161,13 +90,14 @@ func (h *AppHandlers) NewPostPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.tmpl.ExecuteTemplate(w, "new_post.html", nil)
-	if err != nil {
+	if err := h.tmpl.ExecuteTemplate(w, "new_post.html", nil); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-// editPostPage отображает форму редактирования поста
+// EditPostPage отображает форму редактирования поста
+// GET /edit-post?id=123 - форма
+// POST /edit-post - обновление поста
 func (h *AppHandlers) EditPostPage(w http.ResponseWriter, r *http.Request) {
 	username, err := r.Cookie("username")
 	if err != nil {
@@ -188,17 +118,12 @@ func (h *AppHandlers) EditPostPage(w http.ResponseWriter, r *http.Request) {
 		imageURL := r.FormValue("image_url")
 		location := r.FormValue("location")
 		isRecommended := r.FormValue("is_recommended") == "on"
-		ratingStr := r.FormValue("rating")
-		rating, err := strconv.Atoi(ratingStr)
-		if err != nil {
+		rating, err := strconv.Atoi(r.FormValue("rating"))
+		if err != nil || rating < 1 || rating > 5 {
 			http.Error(w, "Оценка должна быть числом от 1 до 5", http.StatusBadRequest)
 			return
 		}
 
-		if rating < 1 || rating > 5 {
-			http.Error(w, "Оценка должна быть от 1 до 5", http.StatusBadRequest)
-			return
-		}
 		if err := h.posts.UpdatePost(postID, title, content, imageURL, location, rating, isRecommended); err != nil {
 			http.Error(w, "Ошибка обновления поста: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -232,13 +157,13 @@ func (h *AppHandlers) EditPostPage(w http.ResponseWriter, r *http.Request) {
 		IsAdmin: user.IsAdmin,
 	}
 
-	err = h.tmpl.ExecuteTemplate(w, "edit_post.html", data)
-	if err != nil {
+	if err := h.tmpl.ExecuteTemplate(w, "edit_post.html", data); err != nil {
 		http.Error(w, "Ошибка отображения страницы: "+err.Error(), http.StatusInternalServerError)
 	}
 }
 
-// likeHandler обрабатывает лайки/дизлайки
+// LikeHandler обрабатывает лайки/дизлайки постов
+// POST /like?post_id=123&action=like
 func (h *AppHandlers) LikeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
@@ -260,28 +185,4 @@ func (h *AppHandlers) LikeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, r.Referer(), http.StatusSeeOther)
-}
-
-// adminOnly middleware проверяет права администратора
-func (h *AppHandlers) AdminOnly(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		username, err := r.Cookie("username")
-		if err != nil {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
-			return
-		}
-
-		user, err := h.users.GetUser(username.Value)
-		if err != nil || !user.IsAdmin {
-			http.Error(w, "Доступ запрещён: требуется права администратора", http.StatusForbidden)
-			return
-		}
-
-		next(w, r)
-	}
-}
-
-// contains проверяет наличие подстроки
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && s[:len(substr)] == substr
 }
