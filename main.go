@@ -9,27 +9,26 @@ import (
 	"time"
 
 	"gox2/admin"
+	"gox2/authentication"
 	"gox2/db"
 	"gox2/models"
 	"gox2/posts"
 	"gox2/users"
 
 	_ "github.com/lib/pq"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // App представляет основное приложение
 type App struct {
+	auth  *authentication.AuthHandler
 	users *users.UserRepository
 	posts *posts.PostRepository
 	admin *admin.AdminHandler
+	tmpl  *template.Template
 }
 
-var templates *template.Template
-
-func initTemplates() error {
-	var err error
-	templates, err = template.New("").Funcs(template.FuncMap{
+func initTemplates() (*template.Template, error) {
+	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"formatDate": func(t time.Time) string {
 			return t.Format("02.01.2006 15:04")
 		},
@@ -40,12 +39,13 @@ func initTemplates() error {
 			return s[:n] + "..."
 		},
 	}).ParseGlob("templates/*.html")
-	return err
+	return tmpl, err
 }
 
 func main() {
 	// Инициализация шаблонов
-	if err := initTemplates(); err != nil {
+	tmpl, err := initTemplates()
+	if err != nil {
 		panic(fmt.Sprintf("Не удалось загрузить шаблоны: %v", err))
 	}
 
@@ -60,27 +60,33 @@ func main() {
 	userRepo := users.NewUserRepository(database.DB)
 	postRepo := posts.NewPostRepository(database.DB)
 
+	// Создаем экземпляры обработчиков
+	authHandler := authentication.NewAuthHandler(userRepo, tmpl)
+	adminHandler := admin.NewAdminHandler(userRepo, postRepo, tmpl)
+
 	// Создаем экземпляр приложения
 	app := &App{
+		auth:  authHandler,
 		users: userRepo,
 		posts: postRepo,
-		admin: admin.NewAdminHandler(userRepo, postRepo, templates),
+		admin: adminHandler,
+		tmpl:  tmpl,
 	}
 
 	// Настройка маршрутов
 	http.HandleFunc("/", app.homePage)
-	http.HandleFunc("/register", app.registerPage)
-	http.HandleFunc("/login", app.loginPage)
-	http.HandleFunc("/logout", app.logoutPage)
+	http.HandleFunc("/register", authHandler.RegisterPage)
+	http.HandleFunc("/login", authHandler.LoginPage)
+	http.HandleFunc("/logout", authHandler.LogoutPage)
 	http.HandleFunc("/profile", app.profilePage)
 	http.HandleFunc("/new-post", app.newPostPage)
 	http.HandleFunc("/edit-post", app.editPostPage)
 	http.HandleFunc("/like", app.likeHandler)
 
 	// Админ-роуты
-	http.HandleFunc("/admin", app.adminOnly(app.admin.AdminPanel))
-	http.HandleFunc("/admin/toggle-ban", app.adminOnly(app.admin.ToggleBanUser))
-	http.HandleFunc("/admin/delete-post", app.adminOnly(app.admin.DeletePost))
+	http.HandleFunc("/admin", app.adminOnly(adminHandler.AdminPanel))
+	http.HandleFunc("/admin/toggle-ban", app.adminOnly(adminHandler.ToggleBanUser))
+	http.HandleFunc("/admin/delete-post", app.adminOnly(adminHandler.DeletePost))
 
 	fmt.Println("Сервер запущен на http://localhost:8081")
 	http.ListenAndServe(":8081", nil)
@@ -122,7 +128,7 @@ func (app *App) homePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err = templates.ExecuteTemplate(w, "home.html", struct {
+	err = app.tmpl.ExecuteTemplate(w, "home.html", struct {
 		Posts    []models.Post
 		Username string
 		IsAdmin  bool
@@ -134,78 +140,6 @@ func (app *App) homePage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-}
-
-// registerPage обрабатывает страницу регистрации
-func (app *App) registerPage(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
-		username := r.FormValue("username")
-		password := r.FormValue("password")
-
-		err := app.users.CreateUser(username, password)
-		if err != nil {
-			http.Error(w, "Ошибка регистрации: имя пользователя уже занято", http.StatusInternalServerError)
-			return
-		}
-
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	err := templates.ExecuteTemplate(w, "register.html", nil)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-// loginPage обрабатывает страницу входа
-func (app *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
-		username := r.FormValue("username")
-		password := r.FormValue("password")
-
-		user, err := app.users.GetUser(username)
-		if err != nil {
-			http.Error(w, "Неверные данные", http.StatusUnauthorized)
-			return
-		}
-
-		if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-			http.Error(w, "Неверные данные", http.StatusUnauthorized)
-			return
-		}
-
-		if user.IsBanned {
-			http.Error(w, "Аккаунт заблокирован", http.StatusForbidden)
-			return
-		}
-
-		http.SetCookie(w, &http.Cookie{
-			Name:    "username",
-			Value:   username,
-			Path:    "/",
-			Expires: time.Now().Add(24 * time.Hour),
-		})
-
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	err := templates.ExecuteTemplate(w, "login.html", nil)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-// logoutPage обрабатывает выход пользователя
-func (app *App) logoutPage(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:   "username",
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
-	})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // profilePage отображает профиль пользователя
@@ -240,7 +174,7 @@ func (app *App) profilePage(w http.ResponseWriter, r *http.Request) {
 		Posts:    userPosts,
 	}
 
-	err = templates.ExecuteTemplate(w, "profile.html", data)
+	err = app.tmpl.ExecuteTemplate(w, "profile.html", data)
 	if err != nil {
 		http.Error(w, "Ошибка отображения страницы: "+err.Error(), http.StatusInternalServerError)
 	}
@@ -280,7 +214,7 @@ func (app *App) newPostPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = templates.ExecuteTemplate(w, "new_post.html", nil)
+	err = app.tmpl.ExecuteTemplate(w, "new_post.html", nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -351,7 +285,7 @@ func (app *App) editPostPage(w http.ResponseWriter, r *http.Request) {
 		IsAdmin: user.IsAdmin,
 	}
 
-	err = templates.ExecuteTemplate(w, "edit_post.html", data)
+	err = app.tmpl.ExecuteTemplate(w, "edit_post.html", data)
 	if err != nil {
 		http.Error(w, "Ошибка отображения страницы: "+err.Error(), http.StatusInternalServerError)
 	}
