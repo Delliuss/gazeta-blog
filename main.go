@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -21,12 +19,34 @@ import (
 
 // App представляет основное приложение
 type App struct {
-	users     *users.UserRepository
-	posts     *posts.PostRepository
-	templates map[string]*template.Template
+	users *users.UserRepository
+	posts *posts.PostRepository
+}
+
+var templates *template.Template
+
+func initTemplates() error {
+	var err error
+	templates, err = template.New("").Funcs(template.FuncMap{
+		"formatDate": func(t time.Time) string {
+			return t.Format("02.01.2006 15:04")
+		},
+		"truncate": func(s string, n int) string {
+			if len(s) <= n {
+				return s
+			}
+			return s[:n] + "..."
+		},
+	}).ParseGlob("templates/*.html")
+	return err
 }
 
 func main() {
+	// Инициализация шаблонов
+	if err := initTemplates(); err != nil {
+		panic(fmt.Sprintf("Не удалось загрузить шаблоны: %v", err))
+	}
+
 	// Инициализация базы данных
 	database, err := db.New("user=postgres dbname=go password=0000 host=localhost sslmode=disable")
 	if err != nil {
@@ -37,11 +57,6 @@ func main() {
 	app := &App{
 		users: users.NewUserRepository(database.DB),
 		posts: posts.NewPostRepository(database.DB),
-	}
-
-	// Загрузка шаблонов
-	if err := app.loadTemplates(); err != nil {
-		panic(fmt.Sprintf("Не удалось загрузить шаблоны: %v", err))
 	}
 
 	// Настройка маршрутов
@@ -61,43 +76,6 @@ func main() {
 
 	fmt.Println("Сервер запущен на http://localhost:8081")
 	http.ListenAndServe(":8081", nil)
-}
-
-func (app *App) loadTemplates() error {
-	app.templates = make(map[string]*template.Template)
-
-	funcMap := template.FuncMap{
-		"formatDate": func(t time.Time) string {
-			return t.Format("02.01.2006 15:04")
-		},
-		"truncate": func(s string, n int) string {
-			if len(s) <= n {
-				return s
-			}
-			return s[:n] + "..."
-		},
-	}
-
-	// Шаблоны для каждой страницы
-	templatesDir := "templates"
-	pages := []string{"home", "register", "login", "profile", "new_post", "edit_post", "admin"}
-
-	for _, page := range pages {
-		tmplPath := filepath.Join(templatesDir, page+".html")
-
-		// Проверка существования файла шаблона
-		if _, err := os.Stat(tmplPath); os.IsNotExist(err) {
-			return fmt.Errorf("файл шаблона %s не найден", tmplPath)
-		}
-
-		tmpl, err := template.New(page).Funcs(funcMap).ParseFiles(tmplPath)
-		if err != nil {
-			return fmt.Errorf("ошибка загрузки шаблона %s: %v", page, err)
-		}
-		app.templates[page] = tmpl
-	}
-
-	return nil
 }
 
 // homePage отображает главную страницу
@@ -136,7 +114,7 @@ func (app *App) homePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err = app.templates["home"].Execute(w, struct {
+	err = templates.ExecuteTemplate(w, "home.html", struct {
 		Posts    []models.Post
 		Username string
 		IsAdmin  bool
@@ -145,9 +123,8 @@ func (app *App) homePage(w http.ResponseWriter, r *http.Request) {
 		username,
 		isAdmin,
 	})
-
 	if err != nil {
-		http.Error(w, "Ошибка отображения страницы", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -167,9 +144,9 @@ func (app *App) registerPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := app.templates["register"].Execute(w, nil)
+	err := templates.ExecuteTemplate(w, "register.html", nil)
 	if err != nil {
-		http.Error(w, "Ошибка отображения страницы", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -206,9 +183,9 @@ func (app *App) loginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := app.templates["login"].Execute(w, nil)
+	err := templates.ExecuteTemplate(w, "login.html", nil)
 	if err != nil {
-		http.Error(w, "Ошибка отображения страницы", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -255,7 +232,7 @@ func (app *App) profilePage(w http.ResponseWriter, r *http.Request) {
 		Posts:    userPosts,
 	}
 
-	err = app.templates["profile"].Execute(w, data)
+	err = templates.ExecuteTemplate(w, "profile.html", data)
 	if err != nil {
 		http.Error(w, "Ошибка отображения страницы: "+err.Error(), http.StatusInternalServerError)
 	}
@@ -295,9 +272,9 @@ func (app *App) newPostPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = app.templates["new_post"].Execute(w, nil)
+	err = templates.ExecuteTemplate(w, "new_post.html", nil)
 	if err != nil {
-		http.Error(w, "Ошибка отображения страницы", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -366,7 +343,7 @@ func (app *App) editPostPage(w http.ResponseWriter, r *http.Request) {
 		IsAdmin: user.IsAdmin,
 	}
 
-	err = app.templates["edit_post"].Execute(w, data)
+	err = templates.ExecuteTemplate(w, "edit_post.html", data)
 	if err != nil {
 		http.Error(w, "Ошибка отображения страницы: "+err.Error(), http.StatusInternalServerError)
 	}
@@ -410,11 +387,10 @@ func (app *App) adminPanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = app.templates["admin"].Execute(w, struct {
+	err = templates.ExecuteTemplate(w, "admin.html", struct {
 		Users []models.User
 		Posts []models.Post
 	}{users, allPosts})
-
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}

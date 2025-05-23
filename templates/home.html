@@ -39,6 +39,7 @@
         {{if .ImageURL}}<img src="{{.ImageURL}}" style="max-width:300px">{{end}}
         <p>{{.Content}}</p>
         <p>Автор: {{.Author}} • 👍 {{.Likes}} 👎 {{.Dislikes}}</p>
+        
         {{if $.Username}}
         <form method="POST" action="/like" style="display:inline">
             <input type="hidden" name="post_id" value="{{.ID}}">
