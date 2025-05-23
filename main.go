@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"gox2/admin"
 	"gox2/db"
 	"gox2/models"
 	"gox2/posts"
@@ -21,6 +22,7 @@ import (
 type App struct {
 	users *users.UserRepository
 	posts *posts.PostRepository
+	admin *admin.AdminHandler
 }
 
 var templates *template.Template
@@ -54,9 +56,15 @@ func main() {
 	}
 	defer database.Close()
 
+	// Инициализация репозиториев
+	userRepo := users.NewUserRepository(database.DB)
+	postRepo := posts.NewPostRepository(database.DB)
+
+	// Создаем экземпляр приложения
 	app := &App{
-		users: users.NewUserRepository(database.DB),
-		posts: posts.NewPostRepository(database.DB),
+		users: userRepo,
+		posts: postRepo,
+		admin: admin.NewAdminHandler(userRepo, postRepo, templates),
 	}
 
 	// Настройка маршрутов
@@ -70,9 +78,9 @@ func main() {
 	http.HandleFunc("/like", app.likeHandler)
 
 	// Админ-роуты
-	http.HandleFunc("/admin", app.adminOnly(app.adminPanel))
-	http.HandleFunc("/admin/toggle-ban", app.adminOnly(app.toggleBanUser))
-	http.HandleFunc("/admin/delete-post", app.adminOnly(app.adminDeletePost))
+	http.HandleFunc("/admin", app.adminOnly(app.admin.AdminPanel))
+	http.HandleFunc("/admin/toggle-ban", app.adminOnly(app.admin.ToggleBanUser))
+	http.HandleFunc("/admin/delete-post", app.adminOnly(app.admin.DeletePost))
 
 	fmt.Println("Сервер запущен на http://localhost:8081")
 	http.ListenAndServe(":8081", nil)
@@ -371,60 +379,6 @@ func (app *App) likeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, r.Referer(), http.StatusSeeOther)
-}
-
-// adminPanel отображает админ-панель
-func (app *App) adminPanel(w http.ResponseWriter, r *http.Request) {
-	users, err := app.users.GetAllUsers()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	allPosts, err := app.posts.GetAllPosts()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	err = templates.ExecuteTemplate(w, "admin.html", struct {
-		Users []models.User
-		Posts []models.Post
-	}{users, allPosts})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-// toggleBanUser переключает статус блокировки пользователя
-func (app *App) toggleBanUser(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if err := app.users.ToggleUserBan(r.FormValue("username")); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	http.Redirect(w, r, "/admin", http.StatusSeeOther)
-}
-
-// adminDeletePost удаляет пост (админ)
-func (app *App) adminDeletePost(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
-		return
-	}
-
-	postID := r.FormValue("post_id")
-	if err := app.posts.DeletePost(postID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
 // adminOnly middleware проверяет права администратора
