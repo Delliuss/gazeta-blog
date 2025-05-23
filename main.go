@@ -11,6 +11,7 @@ import (
 	"gox2/db"
 	"gox2/models"
 	"gox2/posts"
+	"gox2/users"
 
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
@@ -18,7 +19,7 @@ import (
 
 // App представляет основное приложение
 type App struct {
-	db    *db.DB
+	users *users.UserRepository
 	posts *posts.PostRepository
 }
 
@@ -31,7 +32,7 @@ func main() {
 	defer database.Close()
 
 	app := &App{
-		db:    database,
+		users: users.NewUserRepository(database.DB),
 		posts: posts.NewPostRepository(database.DB),
 	}
 
@@ -58,7 +59,7 @@ func main() {
 func (app *App) homePage(w http.ResponseWriter, r *http.Request) {
 	// Проверка блокировки пользователя
 	if cookie, err := r.Cookie("username"); err == nil {
-		user, err := app.db.GetUser(cookie.Value)
+		user, err := app.users.GetUser(cookie.Value)
 		if err == nil && user.IsBanned {
 			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprintf(w, "<h1>Ваш аккаунт заблокирован</h1><p>Обратитесь к администратору.</p>")
@@ -116,7 +117,7 @@ func (app *App) homePage(w http.ResponseWriter, r *http.Request) {
 	username := ""
 	var isAdmin bool
 	if cookie, err := r.Cookie("username"); err == nil {
-		user, err := app.db.GetUser(cookie.Value)
+		user, err := app.users.GetUser(cookie.Value)
 		if err == nil {
 			username = user.Username
 			isAdmin = user.IsAdmin
@@ -141,7 +142,7 @@ func (app *App) registerPage(w http.ResponseWriter, r *http.Request) {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 
-		err := app.db.CreateUser(username, password)
+		err := app.users.CreateUser(username, password)
 		if err != nil {
 			http.Error(w, "Ошибка регистрации: имя пользователя уже занято", http.StatusInternalServerError)
 			return
@@ -177,7 +178,7 @@ func (app *App) loginPage(w http.ResponseWriter, r *http.Request) {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 
-		user, err := app.db.GetUser(username)
+		user, err := app.users.GetUser(username)
 		if err != nil {
 			http.Error(w, "Неверные данные", http.StatusUnauthorized)
 			return
@@ -435,7 +436,7 @@ func (app *App) editPostPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := app.db.GetUser(username.Value)
+	user, err := app.users.GetUser(username.Value)
 	if err != nil {
 		http.Error(w, "Ошибка проверки прав", http.StatusInternalServerError)
 		return
@@ -513,17 +514,17 @@ func (app *App) editPostPage(w http.ResponseWriter, r *http.Request) {
 		{{if .IsAdmin}}<p style="color: red;">Вы редактируете этот пост как администратор</p>{{end}}
 		<form method="POST">
 			<input type="hidden" name="id" value="{{.ID}}">
-	
+
 			<div class="form-group">
 				<label>Название заведения:</label>
 				<input type="text" name="title" value="{{.Title}}" required>
 			</div>
-	
+
 			<div class="form-group">
 				<label>Местоположение (город, страна):</label>
 				<input type="text" name="location" value="{{.Location}}" required>
 			</div>
-	
+
 			<div class="form-group">
 				<label>Оценка (1-5):</label>
 				<select name="rating" required>
@@ -534,24 +535,24 @@ func (app *App) editPostPage(w http.ResponseWriter, r *http.Request) {
 					<option value="5" {{if eq .Rating 5}}selected{{end}}>5</option>
 				</select>
 			</div>
-	
+
 			<div class="form-group">
 				<label>URL изображения:</label>
 				<input type="text" name="image_url" value="{{.ImageURL}}">
 			</div>
-	
+
 			<div class="form-group">
 				<label>Отзыв:</label>
 				<textarea name="content" required>{{.Content}}</textarea>
 			</div>
-	
+
 			<div class="form-group">
 				<label>
 					<input type="checkbox" name="is_recommended" {{if .IsRecommended}}checked{{end}}>
 					Рекомендую это место
 				</label>
 			</div>
-	
+
 			<button type="submit" class="submit-btn">Сохранить изменения</button>
 		</form>
 		<a href="/profile">Вернуться в профиль</a>
@@ -599,7 +600,7 @@ func (app *App) likeHandler(w http.ResponseWriter, r *http.Request) {
 
 // adminPanel отображает админ-панель
 func (app *App) adminPanel(w http.ResponseWriter, r *http.Request) {
-	users, err := app.db.GetAllUsers()
+	users, err := app.users.GetAllUsers()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -648,7 +649,7 @@ func (app *App) toggleBanUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := app.db.ToggleUserBan(r.FormValue("username")); err != nil {
+	if err := app.users.ToggleUserBan(r.FormValue("username")); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -681,7 +682,7 @@ func (app *App) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		user, err := app.db.GetUser(username.Value)
+		user, err := app.users.GetUser(username.Value)
 		if err != nil || !user.IsAdmin {
 			http.Error(w, "Доступ запрещён: требуется права администратора", http.StatusForbidden)
 			return
