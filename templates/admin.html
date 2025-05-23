@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Админ-панель</title>
+    <style>
+        table { width: 100%; }
+        .banned { background: #ffdddd; }
+        .admin { background: #ddffdd; }
+    </style>
+</head>
+<body>
+    <h1>Админ-панель</h1>
+    <a href="/">На главную</a>
+    
+    <h2>Пользователи</h2>
+    <table>
+        <tr>
+            <th>Имя</th>
+            <th>Статус</th>
+            <th>Действия</th>
+        </tr>
+        {{range .Users}}
+        <tr class="{{if .IsBanned}}banned{{else if .IsAdmin}}admin{{end}}">
+            <td>{{.Username}}</td>
+            <td>{{if .IsAdmin}}Админ{{else if .IsBanned}}Заблокирован{{else}}Обычный{{end}}</td>
+            <td>
+                {{if not .IsAdmin}}
+                <form action="/admin/toggle-ban" method="POST" style="display:inline">
+                    <input type="hidden" name="username" value="{{.Username}}">
+                    <button type="submit">{{if .IsBanned}}Разблокировать{{else}}Заблокировать{{end}}</button>
+                </form>
+                {{end}}
+            </td>
+        </tr>
+        {{end}}
+    </table>
+    
+    <h2>Все посты</h2>
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>Название</th>
+            <th>Автор</th>
+            <th>Действия</th>
+        </tr>
+        {{range .Posts}}
+        <tr>
+            <td>{{.ID}}</td>
+            <td>{{.Title}}</td>
+            <td>{{.Author}}</td>
+            <td>
+                <a href="/edit-post?id={{.ID}}">Редактировать</a> |
+                <form action="/admin/delete-post" method="POST" style="display:inline">
+                    <input type="hidden" name="post_id" value="{{.ID}}">
+                    <button type="submit">Удалить</button>
+                </form>
+            </td>
+        </tr>
+        {{end}}
+    </table>
+</body>
+</html>

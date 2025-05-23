@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Редактировать отзыв</title>
+    <style>
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+        textarea { height: 150px; }
+        .submit-btn {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            cursor: pointer;
+        }
+        .submit-btn:hover { background: #45a049; }
+    </style>
+</head>
+<body>
+    <h1>Редактировать отзыв</h1>
+    {{if .IsAdmin}}<p style="color: red;">Вы редактируете этот пост как администратор</p>{{end}}
+    <form method="POST">
+        <input type="hidden" name="id" value="{{.ID}}">
+
+        <div class="form-group">
+            <label>Название заведения:</label>
+            <input type="text" name="title" value="{{.Title}}" required>
+        </div>
+
+        <div class="form-group">
+            <label>Местоположение (город, страна):</label>
+            <input type="text" name="location" value="{{.Location}}" required>
+        </div>
+
+        <div class="form-group">
+            <label>Оценка (1-5):</label>
+            <select name="rating" required>
+                <option value="1" {{if eq .Rating 1}}selected{{end}}>1</option>
+                <option value="2" {{if eq .Rating 2}}selected{{end}}>2</option>
+                <option value="3" {{if eq .Rating 3}}selected{{end}}>3</option>
+                <option value="4" {{if eq .Rating 4}}selected{{end}}>4</option>
+                <option value="5" {{if eq .Rating 5}}selected{{end}}>5</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>URL изображения:</label>
+            <input type="text" name="image_url" value="{{.ImageURL}}">
+        </div>
+
+        <div class="form-group">
+            <label>Отзыв:</label>
+            <textarea name="content" required>{{.Content}}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="is_recommended" {{if .IsRecommended}}checked{{end}}>
+                Рекомендую это место
+            </label>
+        </div>
+
+        <button type="submit" class="submit-btn">Сохранить изменения</button>
+    </form>
+    <a href="/profile">Вернуться в профиль</a>
+</body>
+</html>

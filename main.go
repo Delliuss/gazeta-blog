@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -19,8 +21,9 @@ import (
 
 // App представляет основное приложение
 type App struct {
-	users *users.UserRepository
-	posts *posts.PostRepository
+	users     *users.UserRepository
+	posts     *posts.PostRepository
+	templates map[string]*template.Template
 }
 
 func main() {
@@ -34,6 +37,11 @@ func main() {
 	app := &App{
 		users: users.NewUserRepository(database.DB),
 		posts: posts.NewPostRepository(database.DB),
+	}
+
+	// Загрузка шаблонов
+	if err := app.loadTemplates(); err != nil {
+		panic(fmt.Sprintf("Не удалось загрузить шаблоны: %v", err))
 	}
 
 	// Настройка маршрутов
@@ -55,6 +63,43 @@ func main() {
 	http.ListenAndServe(":8081", nil)
 }
 
+func (app *App) loadTemplates() error {
+	app.templates = make(map[string]*template.Template)
+
+	funcMap := template.FuncMap{
+		"formatDate": func(t time.Time) string {
+			return t.Format("02.01.2006 15:04")
+		},
+		"truncate": func(s string, n int) string {
+			if len(s) <= n {
+				return s
+			}
+			return s[:n] + "..."
+		},
+	}
+
+	// Шаблоны для каждой страницы
+	templatesDir := "templates"
+	pages := []string{"home", "register", "login", "profile", "new_post", "edit_post", "admin"}
+
+	for _, page := range pages {
+		tmplPath := filepath.Join(templatesDir, page+".html")
+
+		// Проверка существования файла шаблона
+		if _, err := os.Stat(tmplPath); os.IsNotExist(err) {
+			return fmt.Errorf("файл шаблона %s не найден", tmplPath)
+		}
+
+		tmpl, err := template.New(page).Funcs(funcMap).ParseFiles(tmplPath)
+		if err != nil {
+			return fmt.Errorf("ошибка загрузки шаблона %s: %v", page, err)
+		}
+		app.templates[page] = tmpl
+	}
+
+	return nil
+}
+
 // homePage отображает главную страницу
 func (app *App) homePage(w http.ResponseWriter, r *http.Request) {
 	// Проверка блокировки пользователя
@@ -66,39 +111,6 @@ func (app *App) homePage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	tmpl := `<!DOCTYPE html><html><head>
-		<title>Вкусная еда в путешествиях</title>
-		<style>.post{border:1px solid #ddd;padding:15px;margin-bottom:20px}
-		.recommended{background:#f8fff8;border-left:4px solid #4CAF50}</style>
-		</head><body>
-		<h1>Вкусная еда в путешествиях</h1>
-		{{if .Username}}
-			<p>Добро пожаловать, {{.Username}}! |
-			<a href="/profile">Профиль</a> |
-			{{if .IsAdmin}}<a href="/admin">Админ-панель</a> | {{end}}
-			<a href="/logout">Выйти</a></p>
-		{{else}}<p><a href="/login">Войти</a> | <a href="/register">Регистрация</a></p>{{end}}
-		<form method="GET" action="/"><input type="text" name="search" placeholder="Поиск...">
-		<input type="submit" value="Найти"></form>
-		<h2>Последние отзывы</h2>
-		{{range .Posts}}<div class="post {{if .IsRecommended}}recommended{{end}}">
-			<h3>{{.Title}}</h3><p>{{.Location}} • {{.CreatedAt.Format "02.01.2006"}}</p>
-			<p>Оценка: {{.Rating}}/5 {{if .IsRecommended}}⭐{{end}}</p>
-			{{if .ImageURL}}<img src="{{.ImageURL}}" style="max-width:300px">{{end}}
-			<p>{{.Content}}</p>
-			<p>Автор: {{.Author}} • 👍 {{.Likes}} 👎 {{.Dislikes}}</p>
-			{{if $.Username}}<form method="POST" action="/like" style="display:inline">
-				<input type="hidden" name="post_id" value="{{.ID}}">
-				<input type="hidden" name="action" value="like">
-				<button type="submit">👍</button></form>
-				<form method="POST" action="/like" style="display:inline">
-				<input type="hidden" name="post_id" value="{{.ID}}">
-				<input type="hidden" name="action" value="dislike">
-				<button type="submit">👎</button></form>
-			{{end}}
-		</div>{{else}}<p>Нет отзывов</p>{{end}}
-		</body></html>`
 
 	search := r.URL.Query().Get("search")
 	posts, err := app.posts.LoadPosts()
@@ -124,8 +136,7 @@ func (app *App) homePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	t, _ := template.New("webpage").Parse(tmpl)
-	t.Execute(w, struct {
+	err = app.templates["home"].Execute(w, struct {
 		Posts    []models.Post
 		Username string
 		IsAdmin  bool
@@ -134,6 +145,10 @@ func (app *App) homePage(w http.ResponseWriter, r *http.Request) {
 		username,
 		isAdmin,
 	})
+
+	if err != nil {
+		http.Error(w, "Ошибка отображения страницы", http.StatusInternalServerError)
+	}
 }
 
 // registerPage обрабатывает страницу регистрации
@@ -152,24 +167,10 @@ func (app *App) registerPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl := `<!DOCTYPE html>
-	<html>
-	<head>
-		<title>Регистрация</title>
-	</head>
-	<body>
-		<h1>Регистрация</h1>
-		<form method="POST">
-			<input type="text" name="username" placeholder="Имя пользователя" required>
-			<input type="password" name="password" placeholder="Пароль" required>
-			<input type="submit" value="Зарегистрироваться">
-		</form>
-		<a href="/">На главную</a>
-	</body>
-	</html>`
-
-	t, _ := template.New("register").Parse(tmpl)
-	t.Execute(w, nil)
+	err := app.templates["register"].Execute(w, nil)
+	if err != nil {
+		http.Error(w, "Ошибка отображения страницы", http.StatusInternalServerError)
+	}
 }
 
 // loginPage обрабатывает страницу входа
@@ -205,24 +206,10 @@ func (app *App) loginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl := `<!DOCTYPE html>
-	<html>
-	<head>
-		<title>Вход</title>
-	</head>
-	<body>
-		<h1>Вход</h1>
-		<form method="POST">
-			<input type="text" name="username" placeholder="Имя пользователя" required>
-			<input type="password" name="password" placeholder="Пароль" required>
-			<input type="submit" value="Войти">
-		</form>
-		<a href="/">На главную</a>
-	</body>
-	</html>`
-
-	t, _ := template.New("login").Parse(tmpl)
-	t.Execute(w, nil)
+	err := app.templates["login"].Execute(w, nil)
+	if err != nil {
+		http.Error(w, "Ошибка отображения страницы", http.StatusInternalServerError)
+	}
 }
 
 // logoutPage обрабатывает выход пользователя
@@ -260,81 +247,6 @@ func (app *App) profilePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	funcMap := template.FuncMap{
-		"formatDate": func(t time.Time) string {
-			return t.Format("02.01.2006 15:04")
-		},
-		"truncate": func(s string, n int) string {
-			if len(s) <= n {
-				return s
-			}
-			return s[:n] + "..."
-		},
-	}
-
-	tmpl := `<!DOCTYPE html>
-	<html>
-	<head>
-		<title>Мой профиль</title>
-		<style>
-			body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-			.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-			.post { border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 5px; }
-			.post-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
-			.post-title { font-size: 1.2em; font-weight: bold; color: #333; margin: 0; }
-			.post-meta { color: #666; font-size: 0.9em; }
-			.post-content { margin: 10px 0; }
-			.post-actions { margin-top: 10px; }
-			.btn { padding: 5px 10px; text-decoration: none; border-radius: 3px; }
-			.btn-edit { background: #4CAF50; color: white; }
-			.btn-delete { background: #f44336; color: white; border: none; cursor: pointer; }
-			.btn-new { background: #2196F3; color: white; }
-			.rating { color: #FF9800; font-weight: bold; }
-			.recommended { color: #4CAF50; }
-		</style>
-	</head>
-	<body>
-		<div class="header">
-			<h1>Мой профиль: {{.Username}}</h1>
-			<div>
-				<a href="/" class="btn">На главную</a>
-				<a href="/new-post" class="btn btn-new">Новый пост</a>
-			</div>
-		</div>
-
-		<h2>Мои отзывы ({{len .Posts}})</h2>
-
-		{{if .Posts}}
-			{{range .Posts}}
-				<div class="post {{if .IsRecommended}}recommended-border{{end}}">
-					<div class="post-header">
-						<h3 class="post-title">{{.Title}}</h3>
-						<span class="rating">Оценка: {{.Rating}}/5 {{if .IsRecommended}}<span class="recommended">★ Рекомендую</span>{{end}}</span>
-					</div>
-					<div class="post-meta">
-						<span>{{.Location}} • {{formatDate .CreatedAt}}</span>
-					</div>
-					<div class="post-content">
-						{{truncate .Content 150}}
-					</div>
-					<div class="post-meta">
-						👍 {{.Likes}} • 👎 {{.Dislikes}}
-					</div>
-					<div class="post-actions">
-						<a href="/edit-post?id={{.ID}}" class="btn btn-edit">Редактировать</a>
-						<form method="POST" style="display: inline;">
-							<input type="hidden" name="delete" value="{{.ID}}">
-							<button type="submit" class="btn btn-delete">Удалить</button>
-						</form>
-					</div>
-				</div>
-			{{end}}
-		{{else}}
-			<p>У вас пока нет ни одного отзыва. <a href="/new-post">Создайте первый!</a></p>
-		{{end}}
-	</body>
-	</html>`
-
 	data := struct {
 		Username string
 		Posts    []models.Post
@@ -343,8 +255,7 @@ func (app *App) profilePage(w http.ResponseWriter, r *http.Request) {
 		Posts:    userPosts,
 	}
 
-	t := template.Must(template.New("profile").Funcs(funcMap).Parse(tmpl))
-	err = t.Execute(w, data)
+	err = app.templates["profile"].Execute(w, data)
 	if err != nil {
 		http.Error(w, "Ошибка отображения страницы: "+err.Error(), http.StatusInternalServerError)
 	}
@@ -384,48 +295,10 @@ func (app *App) newPostPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl := `<!DOCTYPE html>
-	<html>
-	<head>
-		<title>Новый отзыв</title>
-	</head>
-	<body>
-		<h1>Новый отзыв</h1>
-		<form method="POST">
-			<div>
-				<label>Название заведения:</label>
-				<input type="text" name="title" required>
-			</div>
-			<div>
-				<label>Местоположение (город, страна):</label>
-				<input type="text" name="location" required>
-			</div>
-			<div>
-				<label>Оценка (1-5):</label>
-				<input type="number" name="rating" min="1" max="5" required>
-			</div>
-			<div>
-				<label>URL изображения:</label>
-				<input type="text" name="image_url">
-			</div>
-			<div>
-				<label>Отзыв:</label>
-				<textarea name="content" rows="5" required></textarea>
-			</div>
-			<div>
-				<label>
-					<input type="checkbox" name="is_recommended">
-					Рекомендую это место
-				</label>
-			</div>
-			<input type="submit" value="Опубликовать">
-		</form>
-		<a href="/profile">Отмена</a>
-	</body>
-	</html>`
-
-	t, _ := template.New("newPost").Parse(tmpl)
-	t.Execute(w, nil)
+	err = app.templates["new_post"].Execute(w, nil)
+	if err != nil {
+		http.Error(w, "Ошибка отображения страницы", http.StatusInternalServerError)
+	}
 }
 
 // editPostPage отображает форму редактирования поста
@@ -485,80 +358,6 @@ func (app *App) editPostPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl := `<!DOCTYPE html>
-	<html>
-	<head>
-		<title>Редактировать отзыв</title>
-		<style>
-			.form-group { margin-bottom: 15px; }
-			label { display: block; margin-bottom: 5px; }
-			input[type="text"], textarea, select {
-				width: 100%;
-				padding: 8px;
-				box-sizing: border-box;
-				margin-bottom: 10px;
-			}
-			textarea { height: 150px; }
-			.submit-btn {
-				background: #4CAF50;
-				color: white;
-				padding: 10px 15px;
-				border: none;
-				cursor: pointer;
-			}
-			.submit-btn:hover { background: #45a049; }
-		</style>
-	</head>
-	<body>
-		<h1>Редактировать отзыв</h1>
-		{{if .IsAdmin}}<p style="color: red;">Вы редактируете этот пост как администратор</p>{{end}}
-		<form method="POST">
-			<input type="hidden" name="id" value="{{.ID}}">
-
-			<div class="form-group">
-				<label>Название заведения:</label>
-				<input type="text" name="title" value="{{.Title}}" required>
-			</div>
-
-			<div class="form-group">
-				<label>Местоположение (город, страна):</label>
-				<input type="text" name="location" value="{{.Location}}" required>
-			</div>
-
-			<div class="form-group">
-				<label>Оценка (1-5):</label>
-				<select name="rating" required>
-					<option value="1" {{if eq .Rating 1}}selected{{end}}>1</option>
-					<option value="2" {{if eq .Rating 2}}selected{{end}}>2</option>
-					<option value="3" {{if eq .Rating 3}}selected{{end}}>3</option>
-					<option value="4" {{if eq .Rating 4}}selected{{end}}>4</option>
-					<option value="5" {{if eq .Rating 5}}selected{{end}}>5</option>
-				</select>
-			</div>
-
-			<div class="form-group">
-				<label>URL изображения:</label>
-				<input type="text" name="image_url" value="{{.ImageURL}}">
-			</div>
-
-			<div class="form-group">
-				<label>Отзыв:</label>
-				<textarea name="content" required>{{.Content}}</textarea>
-			</div>
-
-			<div class="form-group">
-				<label>
-					<input type="checkbox" name="is_recommended" {{if .IsRecommended}}checked{{end}}>
-					Рекомендую это место
-				</label>
-			</div>
-
-			<button type="submit" class="submit-btn">Сохранить изменения</button>
-		</form>
-		<a href="/profile">Вернуться в профиль</a>
-	</body>
-	</html>`
-
 	data := struct {
 		models.Post
 		IsAdmin bool
@@ -567,8 +366,7 @@ func (app *App) editPostPage(w http.ResponseWriter, r *http.Request) {
 		IsAdmin: user.IsAdmin,
 	}
 
-	t := template.Must(template.New("editPost").Parse(tmpl))
-	err = t.Execute(w, data)
+	err = app.templates["edit_post"].Execute(w, data)
 	if err != nil {
 		http.Error(w, "Ошибка отображения страницы: "+err.Error(), http.StatusInternalServerError)
 	}
@@ -612,34 +410,14 @@ func (app *App) adminPanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl := `<!DOCTYPE html><html><head><title>Админ-панель</title>
-		<style>table{width:100%} .banned{background:#ffdddd} .admin{background:#ddffdd}</style>
-		</head><body>
-		<h1>Админ-панель</h1><a href="/">На главную</a>
-		<h2>Пользователи</h2>
-		<table><tr><th>Имя</th><th>Статус</th><th>Действия</th></tr>
-		{{range .Users}}<tr class="{{if .IsBanned}}banned{{else if .IsAdmin}}admin{{end}}">
-		<td>{{.Username}}</td>
-		<td>{{if .IsAdmin}}Админ{{else if .IsBanned}}Заблокирован{{else}}Обычный{{end}}</td>
-		<td>{{if not .IsAdmin}}<form action="/admin/toggle-ban" method="POST" style="display:inline">
-			<input type="hidden" name="username" value="{{.Username}}">
-			<button type="submit">{{if .IsBanned}}Разблокировать{{else}}Заблокировать{{end}}</button>
-		</form>{{end}}</td></tr>{{end}}</table>
-		<h2>Все посты</h2>
-		<table><tr><th>ID</th><th>Название</th><th>Автор</th><th>Действия</th></tr>
-		{{range .Posts}}<tr><td>{{.ID}}</td><td>{{.Title}}</td><td>{{.Author}}</td>
-		<td><a href="/edit-post?id={{.ID}}">Редактировать</a> |
-		<form action="/admin/delete-post" method="POST" style="display:inline">
-			<input type="hidden" name="post_id" value="{{.ID}}">
-			<button type="submit">Удалить</button>
-		</form></td></tr>{{end}}</table>
-		</body></html>`
-
-	t := template.Must(template.New("admin").Parse(tmpl))
-	t.Execute(w, struct {
+	err = app.templates["admin"].Execute(w, struct {
 		Users []models.User
 		Posts []models.Post
 	}{users, allPosts})
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // toggleBanUser переключает статус блокировки пользователя

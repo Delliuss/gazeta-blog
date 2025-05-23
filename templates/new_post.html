@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Новый отзыв</title>
+</head>
+<body>
+    <h1>Новый отзыв</h1>
+    <form method="POST">
+        <div>
+            <label>Название заведения:</label>
+            <input type="text" name="title" required>
+        </div>
+        <div>
+            <label>Местоположение (город, страна):</label>
+            <input type="text" name="location" required>
+        </div>
+        <div>
+            <label>Оценка (1-5):</label>
+            <input type="number" name="rating" min="1" max="5" required>
+        </div>
+        <div>
+            <label>URL изображения:</label>
+            <input type="text" name="image_url">
+        </div>
+        <div>
+            <label>Отзыв:</label>
+            <textarea name="content" rows="5" required></textarea>
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" name="is_recommended">
+                Рекомендую это место
+            </label>
+        </div>
+        <input type="submit" value="Опубликовать">
+    </form>
+    <a href="/profile">Отмена</a>
+</body>
+</html>
