@@ -10,6 +10,7 @@ import (
 
 	"gox2/db"
 	"gox2/models"
+	"gox2/posts"
 
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
@@ -17,7 +18,8 @@ import (
 
 // App представляет основное приложение
 type App struct {
-	db *db.DB
+	db    *db.DB
+	posts *posts.PostRepository
 }
 
 func main() {
@@ -28,7 +30,10 @@ func main() {
 	}
 	defer database.Close()
 
-	app := &App{db: database}
+	app := &App{
+		db:    database,
+		posts: posts.NewPostRepository(database.DB),
+	}
 
 	// Настройка маршрутов
 	http.HandleFunc("/", app.homePage)
@@ -95,7 +100,7 @@ func (app *App) homePage(w http.ResponseWriter, r *http.Request) {
 		</body></html>`
 
 	search := r.URL.Query().Get("search")
-	posts, err := app.db.LoadPosts()
+	posts, err := app.posts.LoadPosts()
 	if err != nil {
 		http.Error(w, "Ошибка загрузки постов", http.StatusInternalServerError)
 		return
@@ -240,7 +245,7 @@ func (app *App) profilePage(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "POST" && r.FormValue("delete") != "" {
 		postID := r.FormValue("delete")
-		if err := app.db.DeletePost(postID); err != nil {
+		if err := app.posts.DeletePost(postID); err != nil {
 			http.Error(w, "Ошибка при удалении поста: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -248,7 +253,7 @@ func (app *App) profilePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userPosts, err := app.db.GetUserPosts(username.Value)
+	userPosts, err := app.posts.GetUserPosts(username.Value)
 	if err != nil {
 		http.Error(w, "Ошибка загрузки постов: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -297,7 +302,7 @@ func (app *App) profilePage(w http.ResponseWriter, r *http.Request) {
 		</div>
 
 		<h2>Мои отзывы ({{len .Posts}})</h2>
-	
+
 		{{if .Posts}}
 			{{range .Posts}}
 				<div class="post {{if .IsRecommended}}recommended-border{{end}}">
@@ -365,12 +370,11 @@ func (app *App) newPostPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Добавьте проверку диапазона
 		if rating < 1 || rating > 5 {
 			http.Error(w, "Оценка должна быть от 1 до 5", http.StatusBadRequest)
 			return
 		}
-		if err := app.db.CreatePost(title, content, imageURL, location, username.Value, rating, isRecommended); err != nil {
+		if err := app.posts.CreatePost(title, content, imageURL, location, username.Value, rating, isRecommended); err != nil {
 			http.Error(w, "Ошибка создания поста", http.StatusInternalServerError)
 			return
 		}
@@ -451,12 +455,11 @@ func (app *App) editPostPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Проверка диапазона
 		if rating < 1 || rating > 5 {
 			http.Error(w, "Оценка должна быть от 1 до 5", http.StatusBadRequest)
 			return
 		}
-		if err := app.db.UpdatePost(postID, title, content, imageURL, location, rating, isRecommended); err != nil {
+		if err := app.posts.UpdatePost(postID, title, content, imageURL, location, rating, isRecommended); err != nil {
 			http.Error(w, "Ошибка обновления поста: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -471,7 +474,7 @@ func (app *App) editPostPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	post, err := app.db.GetPost(postID)
+	post, err := app.posts.GetPost(postID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Пост не найден или у вас нет прав на его редактирование", http.StatusNotFound)
@@ -510,17 +513,17 @@ func (app *App) editPostPage(w http.ResponseWriter, r *http.Request) {
 		{{if .IsAdmin}}<p style="color: red;">Вы редактируете этот пост как администратор</p>{{end}}
 		<form method="POST">
 			<input type="hidden" name="id" value="{{.ID}}">
-		
+	
 			<div class="form-group">
 				<label>Название заведения:</label>
 				<input type="text" name="title" value="{{.Title}}" required>
 			</div>
-		
+	
 			<div class="form-group">
 				<label>Местоположение (город, страна):</label>
 				<input type="text" name="location" value="{{.Location}}" required>
 			</div>
-		
+	
 			<div class="form-group">
 				<label>Оценка (1-5):</label>
 				<select name="rating" required>
@@ -531,24 +534,24 @@ func (app *App) editPostPage(w http.ResponseWriter, r *http.Request) {
 					<option value="5" {{if eq .Rating 5}}selected{{end}}>5</option>
 				</select>
 			</div>
-		
+	
 			<div class="form-group">
 				<label>URL изображения:</label>
 				<input type="text" name="image_url" value="{{.ImageURL}}">
 			</div>
-		
+	
 			<div class="form-group">
 				<label>Отзыв:</label>
 				<textarea name="content" required>{{.Content}}</textarea>
 			</div>
-		
+	
 			<div class="form-group">
 				<label>
 					<input type="checkbox" name="is_recommended" {{if .IsRecommended}}checked{{end}}>
 					Рекомендую это место
 				</label>
 			</div>
-		
+	
 			<button type="submit" class="submit-btn">Сохранить изменения</button>
 		</form>
 		<a href="/profile">Вернуться в профиль</a>
@@ -586,7 +589,7 @@ func (app *App) likeHandler(w http.ResponseWriter, r *http.Request) {
 	postID := r.FormValue("post_id")
 	action := r.FormValue("action")
 
-	if err := app.db.AddVote(postID, username.Value, action); err != nil {
+	if err := app.posts.AddVote(postID, username.Value, action); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -602,7 +605,7 @@ func (app *App) adminPanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allPosts, err := app.db.GetAllPosts()
+	allPosts, err := app.posts.GetAllPosts()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -661,7 +664,7 @@ func (app *App) adminDeletePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	postID := r.FormValue("post_id")
-	if err := app.db.DeletePost(postID); err != nil {
+	if err := app.posts.DeletePost(postID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -9,7 +9,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// DB представляет обертку для работы с базой данных
+// DB представляет обертку для работы с базой данных (только пользователи)
 type DB struct {
 	*sql.DB
 	mu sync.Mutex
@@ -107,39 +107,6 @@ func (db *DB) ensureAdminExists() error {
 	return nil
 }
 
-// LoadPosts загружает все посты из базы данных
-func (db *DB) LoadPosts() ([]models.Post, error) {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-
-	rows, err := db.Query(`
-		SELECT id, title, content, image_url, location, rating, likes, dislikes,
-			   created_at, author, is_recommended
-		FROM posts
-		ORDER BY created_at DESC
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var posts []models.Post
-	for rows.Next() {
-		var p models.Post
-		err := rows.Scan(
-			&p.ID, &p.Title, &p.Content, &p.ImageURL, &p.Location,
-			&p.Rating, &p.Likes, &p.Dislikes, &p.CreatedAt, &p.Author,
-			&p.IsRecommended,
-		)
-		if err != nil {
-			return nil, err
-		}
-		posts = append(posts, p)
-	}
-
-	return posts, nil
-}
-
 // GetUser возвращает пользователя по имени
 func (db *DB) GetUser(username string) (*models.User, error) {
 	var user models.User
@@ -180,60 +147,6 @@ func (db *DB) ToggleUserBan(username string) error {
 	return err
 }
 
-// DeletePost удаляет пост по ID
-func (db *DB) DeletePost(postID string) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.Exec("DELETE FROM post_votes WHERE post_id = $1", postID)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	_, err = tx.Exec("DELETE FROM posts WHERE id = $1", postID)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	return tx.Commit()
-}
-
-// GetUserPosts возвращает посты пользователя
-func (db *DB) GetUserPosts(username string) ([]models.Post, error) {
-	rows, err := db.Query(`
-		SELECT id, title, content, image_url, location, rating, likes, dislikes,
-			   created_at, is_recommended
-		FROM posts
-		WHERE author = $1
-		ORDER BY created_at DESC`,
-		username,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var posts []models.Post
-	for rows.Next() {
-		var p models.Post
-		err := rows.Scan(
-			&p.ID, &p.Title, &p.Content, &p.ImageURL, &p.Location,
-			&p.Rating, &p.Likes, &p.Dislikes, &p.CreatedAt, &p.IsRecommended,
-		)
-		if err != nil {
-			return nil, err
-		}
-		p.Author = username
-		posts = append(posts, p)
-	}
-
-	return posts, nil
-}
-
 // GetAllUsers возвращает всех пользователей
 func (db *DB) GetAllUsers() ([]models.User, error) {
 	rows, err := db.Query("SELECT username, is_admin, is_banned FROM users ORDER BY username")
@@ -251,126 +164,4 @@ func (db *DB) GetAllUsers() ([]models.User, error) {
 	}
 
 	return users, nil
-}
-
-// GetAllPosts возвращает все посты
-func (db *DB) GetAllPosts() ([]models.Post, error) {
-	rows, err := db.Query("SELECT id, title, author FROM posts ORDER BY created_at DESC")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var posts []models.Post
-	for rows.Next() {
-		var p models.Post
-		if err := rows.Scan(&p.ID, &p.Title, &p.Author); err == nil {
-			posts = append(posts, p)
-		}
-	}
-
-	return posts, nil
-}
-
-// CreatePost создает новый пост
-func (db *DB) CreatePost(title, content, imageURL, location, author string, rating int, isRecommended bool) error {
-	_, err := db.Exec(`
-		INSERT INTO posts
-		(title, content, image_url, location, rating, author, is_recommended)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		title, content, imageURL, location, rating, author, isRecommended,
-	)
-	return err
-}
-
-// GetPost возвращает пост по ID
-func (db *DB) GetPost(postID string) (*models.Post, error) {
-	var post models.Post
-	err := db.QueryRow(`
-		SELECT id, title, content, image_url, location, rating, is_recommended
-		FROM posts WHERE id = $1`,
-		postID,
-	).Scan(&post.ID, &post.Title, &post.Content, &post.ImageURL,
-		&post.Location, &post.Rating, &post.IsRecommended)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &post, nil
-}
-
-// UpdatePost обновляет пост
-func (db *DB) UpdatePost(postID, title, content, imageURL, location string, rating int, isRecommended bool) error {
-	_, err := db.Exec(`
-		UPDATE posts SET
-			title = $1,
-			content = $2,
-			image_url = $3,
-			location = $4,
-			rating = $5,
-			is_recommended = $6
-		WHERE id = $7`,
-		title, content, imageURL, location, rating, isRecommended, postID,
-	)
-	return err
-}
-
-// AddVote добавляет голос за пост
-func (db *DB) AddVote(postID, username, action string) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-
-	// Проверяем, не голосовал ли уже пользователь
-	var exists bool
-	err = tx.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM post_votes
-			WHERE post_id = $1 AND username = $2
-		)`, postID, username).Scan(&exists)
-
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	if exists {
-		tx.Rollback()
-		return fmt.Errorf("пользователь уже голосовал за этот пост")
-	}
-
-	// Обновляем счетчик
-	var column string
-	if action == "like" {
-		column = "likes"
-	} else if action == "dislike" {
-		column = "dislikes"
-	} else {
-		tx.Rollback()
-		return fmt.Errorf("неверное действие")
-	}
-
-	_, err = tx.Exec(`
-		UPDATE posts
-		SET `+column+` = `+column+` + 1
-		WHERE id = $1`, postID)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	// Записываем голос
-	_, err = tx.Exec(`
-		INSERT INTO post_votes (post_id, username, vote_type)
-		VALUES ($1, $2, $3)`,
-		postID, username, action,
-	)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	return tx.Commit()
 }
