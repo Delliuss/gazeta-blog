@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"gox2/admin"
 	"gox2/authentication"
 	"gox2/config"
 	"gox2/db"
@@ -35,7 +34,7 @@ func main() {
 	repos := repositories.Init(database.DB)
 
 	authHandler := authentication.NewAuthHandler(repos.UserRepo, tmpl)
-	adminHandler := admin.NewAdminHandler(repos.UserRepo, repos.PostRepo, tmpl)
+	adminHandler := handlers.NewAdminHandler(repos.UserRepo, repos.PostRepo, tmpl)
 	appHandlers := handlers.NewAppHandlers(authHandler, repos.UserRepo, repos.PostRepo, adminHandler, tmpl)
 
 	routes.Setup(appHandlers, authHandler, adminHandler)

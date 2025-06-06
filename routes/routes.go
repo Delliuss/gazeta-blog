@@ -1,13 +1,12 @@
 package routes
 
 import (
-	"gox2/admin"
 	"gox2/authentication"
 	"gox2/handlers"
 	"net/http"
 )
 
-func Setup(h *handlers.AppHandlers, auth *authentication.AuthHandler, admin *admin.AdminHandler) {
+func Setup(h *handlers.AppHandlers, auth *authentication.AuthHandler, admin *handlers.AdminHandler) {
 	http.HandleFunc("/", h.HomePage)
 	http.HandleFunc("/register", auth.RegisterPage)
 	http.HandleFunc("/login", auth.LoginPage)

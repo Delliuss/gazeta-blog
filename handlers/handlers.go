@@ -1,4 +1,4 @@
-package admin
+package handlers
 
 import (
 	"gox2/models"
