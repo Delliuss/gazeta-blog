@@ -2,38 +2,69 @@
 <html>
 <head>
     <title>Новый отзыв</title>
+    <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <h1>Новый отзыв</h1>
-    <form method="POST">
-        <div>
-            <label>Название заведения:</label>
-            <input type="text" name="title" required>
+    <nav class="navbar">
+        <div class="navbar-content">
+            <a href="/" style="font-size: 1.5rem; font-weight: bold; color: var(--primary); text-decoration: none;">
+                Гастрономические путешествия
+            </a>
+            <div class="nav-links">
+                <a href="/profile">Профиль</a>
+                <a href="/logout">Выйти</a>
+            </div>
         </div>
-        <div>
-            <label>Местоположение (город, страна):</label>
-            <input type="text" name="location" required>
-        </div>
-        <div>
-            <label>Оценка (1-5):</label>
-            <input type="number" name="rating" min="1" max="5" required>
-        </div>
-        <div>
-            <label>URL изображения:</label>
-            <input type="text" name="image_url">
-        </div>
-        <div>
-            <label>Отзыв:</label>
-            <textarea name="content" rows="5" required></textarea>
-        </div>
-        <div>
-            <label>
-                <input type="checkbox" name="is_recommended">
-                Рекомендую это место
-            </label>
-        </div>
-        <input type="submit" value="Опубликовать">
-    </form>
-    <a href="/profile">Отмена</a>
+    </nav>
+
+    <div class="form-container fade-in">
+        <h2 style="text-align: center; margin-bottom: 1.5rem;">Новый отзыв</h2>
+        
+        <form method="POST">
+            <div class="form-group">
+                <label class="form-label">Название заведения</label>
+                <input type="text" name="title" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Местоположение (город, страна)</label>
+                <input type="text" name="location" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Оценка (1-5)</label>
+                <select name="rating" class="form-control" required>
+                    <option value="1">1 - Ужасно</option>
+                    <option value="2">2 - Плохо</option>
+                    <option value="3" selected>3 - Нормально</option>
+                    <option value="4">4 - Хорошо</option>
+                    <option value="5">5 - Отлично</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">URL изображения</label>
+                <input type="text" name="image_url" class="form-control">
+                <small style="color: var(--gray);">Необязательное поле</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Отзыв</label>
+                <textarea name="content" class="form-control" required></textarea>
+            </div>
+
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" name="is_recommended">
+                    Рекомендую это место
+                </label>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; margin-top: 2rem;">
+                <a href="/profile" class="btn btn-outline">Отмена</a>
+                <button type="submit" class="btn btn-primary">Опубликовать</button>
+            </div>
+        </form>
+    </div>
 </body>
 </html>

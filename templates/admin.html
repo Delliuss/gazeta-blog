@@ -2,61 +2,120 @@
 <html>
 <head>
     <title>Админ-панель</title>
+    <link rel="stylesheet" href="/static/css/style.css">
     <style>
-        table { width: 100%; }
-        .banned { background: #ffdddd; }
-        .admin { background: #ddffdd; }
+        .banned-row { background-color: #ffeeee; }
+        .admin-row { background-color: #eeffee; }
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        .status-badge.admin {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-badge.banned {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status-badge.normal {
+            background-color: #e2e3e5;
+            color: #383d41;
+        }
     </style>
 </head>
 <body>
-    <h1>Админ-панель</h1>
-    <a href="/">На главную</a>
-    
-    <h2>Пользователи</h2>
-    <table>
-        <tr>
-            <th>Имя</th>
-            <th>Статус</th>
-            <th>Действия</th>
-        </tr>
-        {{range .Users}}
-        <tr class="{{if .IsBanned}}banned{{else if .IsAdmin}}admin{{end}}">
-            <td>{{.Username}}</td>
-            <td>{{if .IsAdmin}}Админ{{else if .IsBanned}}Заблокирован{{else}}Обычный{{end}}</td>
-            <td>
-                {{if not .IsAdmin}}
-                <form action="/admin/toggle-ban" method="POST" style="display:inline">
-                    <input type="hidden" name="username" value="{{.Username}}">
-                    <button type="submit">{{if .IsBanned}}Разблокировать{{else}}Заблокировать{{end}}</button>
-                </form>
-                {{end}}
-            </td>
-        </tr>
-        {{end}}
-    </table>
-    
-    <h2>Все посты</h2>
-    <table>
-        <tr>
-            <th>ID</th>
-            <th>Название</th>
-            <th>Автор</th>
-            <th>Действия</th>
-        </tr>
-        {{range .Posts}}
-        <tr>
-            <td>{{.ID}}</td>
-            <td>{{.Title}}</td>
-            <td>{{.Author}}</td>
-            <td>
-                <a href="/edit-post?id={{.ID}}">Редактировать</a> |
-                <form action="/admin/delete-post" method="POST" style="display:inline">
-                    <input type="hidden" name="post_id" value="{{.ID}}">
-                    <button type="submit">Удалить</button>
-                </form>
-            </td>
-        </tr>
-        {{end}}
-    </table>
+    <nav class="navbar">
+        <div class="navbar-content">
+            <a href="/" style="font-size: 1.5rem; font-weight: bold; color: var(--primary); text-decoration: none;">
+                Гастрономические путешествия | Админ-панель
+            </a>
+            <div class="nav-links">
+                <a href="/">На главную</a>
+                <a href="/logout">Выйти</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1 style="margin-bottom: 2rem;">Админ-панель</h1>
+        
+        <div class="card" style="margin-bottom: 2rem;">
+            <div class="card-body">
+                <h2 style="margin-top: 0;">Пользователи</h2>
+                <div style="overflow-x: auto;">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Имя</th>
+                                <th>Статус</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .Users}}
+                            <tr class="{{if .IsBanned}}banned-row{{else if .IsAdmin}}admin-row{{end}}">
+                                <td>{{.Username}}</td>
+                                <td>
+                                    <span class="status-badge {{if .IsAdmin}}admin{{else if .IsBanned}}banned{{else}}normal{{end}}">
+                                        {{if .IsAdmin}}Админ{{else if .IsBanned}}Заблокирован{{else}}Обычный{{end}}
+                                    </span>
+                                </td>
+                                <td>
+                                    {{if not .IsAdmin}}
+                                    <form action="/admin/toggle-ban" method="POST" style="display: inline;">
+                                        <input type="hidden" name="username" value="{{.Username}}">
+                                        <button type="submit" class="btn {{if .IsBanned}}btn-primary{{else}}btn-danger{{end}}">
+                                            {{if .IsBanned}}Разблокировать{{else}}Заблокировать{{end}}
+                                        </button>
+                                    </form>
+                                    {{end}}
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-body">
+                <h2 style="margin-top: 0;">Все посты</h2>
+                <div style="overflow-x: auto;">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Название</th>
+                                <th>Автор</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .Posts}}
+                            <tr>
+                                <td>{{.ID}}</td>
+                                <td>{{.Title}}</td>
+                                <td>{{.Author}}</td>
+                                <td>
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <a href="/edit-post?id={{.ID}}" class="btn btn-outline">Редактировать</a>
+                                        <form action="/admin/delete-post" method="POST" style="display: inline;">
+                                            <input type="hidden" name="post_id" value="{{.ID}}">
+                                            <button type="submit" class="btn btn-danger">Удалить</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

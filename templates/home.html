@@ -1,60 +1,85 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Вкусная еда в путешествиях</title>
-    <style>
-        .post {
-            border: 1px solid #ddd;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
-        .recommended {
-            background: #f8fff8;
-            border-left: 4px solid #4CAF50;
-        }
-    </style>
+    <title>Гастрономические путешествия</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍴</text></svg>">
 </head>
 <body>
-    <h1>Вкусная еда в путешествиях</h1>
-    {{if .Username}}
-        <p>Добро пожаловать, {{.Username}}! |
-        <a href="/profile">Профиль</a> |
-        {{if .IsAdmin}}<a href="/admin">Админ-панель</a> | {{end}}
-        <a href="/logout">Выйти</a></p>
-    {{else}}
-        <p><a href="/login">Войти</a> | <a href="/register">Регистрация</a></p>
-    {{end}}
-    
-    <form method="GET" action="/">
-        <input type="text" name="search" placeholder="Поиск...">
-        <input type="submit" value="Найти">
-    </form>
-    
-    <h2>Последние отзывы</h2>
-    {{range .Posts}}
-    <div class="post {{if .IsRecommended}}recommended{{end}}">
-        <h3>{{.Title}}</h3>
-        <p>{{.Location}} • {{.CreatedAt.Format "02.01.2006"}}</p>
-        <p>Оценка: {{.Rating}}/5 {{if .IsRecommended}}⭐{{end}}</p>
-        {{if .ImageURL}}<img src="{{.ImageURL}}" style="max-width:300px">{{end}}
-        <p>{{.Content}}</p>
-        <p>Автор: {{.Author}} • 👍 {{.Likes}} 👎 {{.Dislikes}}</p>
+    <nav class="navbar">
+        <div class="navbar-content">
+            <a href="/" style="font-size: 1.5rem; font-weight: bold; color: var(--primary); text-decoration: none;">
+                Гастрономические путешествия
+            </a>
+            <div class="nav-links">
+                {{if .Username}}
+                    <a href="/profile">{{.Username}}</a>
+                    {{if .IsAdmin}}<a href="/admin">Админ</a>{{end}}
+                    <a href="/new-post">Новый пост</a>
+                    <a href="/logout">Выйти</a>
+                {{else}}
+                    <a href="/login">Войти</a>
+                    <a href="/register">Регистрация</a>
+                {{end}}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <form method="GET" action="/" class="form-container" style="padding: 1.5rem;">
+            <div style="display: flex; gap: 0;">
+                <input type="text" name="search" placeholder="Поиск по ресторанам или городам..." 
+                       class="form-control" style="border-radius: 4px 0 0 4px;">
+                <button type="submit" class="btn btn-primary" style="border-radius: 0 4px 4px 0;">Найти</button>
+            </div>
+        </form>
+
+        <h2>Последние отзывы</h2>
         
-        {{if $.Username}}
-        <form method="POST" action="/like" style="display:inline">
-            <input type="hidden" name="post_id" value="{{.ID}}">
-            <input type="hidden" name="action" value="like">
-            <button type="submit">👍</button>
-        </form>
-        <form method="POST" action="/like" style="display:inline">
-            <input type="hidden" name="post_id" value="{{.ID}}">
-            <input type="hidden" name="action" value="dislike">
-            <button type="submit">👎</button>
-        </form>
+        {{if .Posts}}
+            {{range .Posts}}
+            <div class="card fade-in">
+                {{if .ImageURL}}<img src="{{.ImageURL}}" class="card-img">{{end}}
+                <div class="card-body">
+                    <h3 class="card-title">{{.Title}}</h3>
+                    <div class="card-text">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>{{.Location}} • {{.CreatedAt.Format "02.01.2006"}}</span>
+                            <span>
+                                Оценка: <strong>{{.Rating}}/5</strong> 
+                                {{if .IsRecommended}}<span style="color: var(--success);">★ Рекомендую</span>{{end}}
+                            </span>
+                        </div>
+                        <p>{{.Content}}</p>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: var(--gray);">Автор: {{.Author}}</span>
+                            <div style="display: flex; gap: 1rem;">
+                                <span style="color: var(--gray);">👍 {{.Likes}} 👎 {{.Dislikes}}</span>
+                                {{if $.Username}}
+                                <form method="POST" action="/like" style="display: flex; gap: 0.5rem;">
+                                    <input type="hidden" name="post_id" value="{{.ID}}">
+                                    <input type="hidden" name="action" value="like">
+                                    <button type="submit" class="btn btn-outline" style="padding: 0.25rem 0.5rem;">👍</button>
+                                </form>
+                                <form method="POST" action="/like">
+                                    <input type="hidden" name="post_id" value="{{.ID}}">
+                                    <input type="hidden" name="action" value="dislike">
+                                    <button type="submit" class="btn btn-outline" style="padding: 0.25rem 0.5rem;">👎</button>
+                                </form>
+                                {{end}}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+        {{else}}
+            <div class="card text-center" style="padding: 2rem;">
+                <h3>Пока нет отзывов</h3>
+                <p>Будьте первым, кто поделится своими впечатлениями!</p>
+                <a href="/new-post" class="btn btn-primary">Добавить отзыв</a>
+            </div>
         {{end}}
     </div>
-    {{else}}
-    <p>Нет отзывов</p>
-    {{end}}
 </body>
 </html>

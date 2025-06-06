@@ -2,112 +2,59 @@
 <html>
 <head>
     <title>Мой профиль</title>
-    <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            max-width: 800px; 
-            margin: 0 auto; 
-            padding: 20px; 
-        }
-        .header { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            margin-bottom: 20px; 
-        }
-        .post { 
-            border: 1px solid #ddd; 
-            padding: 15px; 
-            margin-bottom: 15px; 
-            border-radius: 5px; 
-        }
-        .post-header { 
-            display: flex; 
-            justify-content: space-between; 
-            margin-bottom: 10px; 
-        }
-        .post-title { 
-            font-size: 1.2em; 
-            font-weight: bold; 
-            color: #333; 
-            margin: 0; 
-        }
-        .post-meta { 
-            color: #666; 
-            font-size: 0.9em; 
-        }
-        .post-content { 
-            margin: 10px 0; 
-        }
-        .post-actions { 
-            margin-top: 10px; 
-        }
-        .btn { 
-            padding: 5px 10px; 
-            text-decoration: none; 
-            border-radius: 3px; 
-        }
-        .btn-edit { 
-            background: #4CAF50; 
-            color: white; 
-        }
-        .btn-delete { 
-            background: #f44336; 
-            color: white; 
-            border: none; 
-            cursor: pointer; 
-        }
-        .btn-new { 
-            background: #2196F3; 
-            color: white; 
-        }
-        .rating { 
-            color: #FF9800; 
-            font-weight: bold; 
-        }
-        .recommended { 
-            color: #4CAF50; 
-        }
-    </style>
+    <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <div class="header">
-        <h1>Мой профиль: {{.Username}}</h1>
-        <div>
-            <a href="/" class="btn">На главную</a>
-            <a href="/new-post" class="btn btn-new">Новый пост</a>
+    <nav class="navbar">
+        <div class="navbar-content">
+            <a href="/" style="font-size: 1.5rem; font-weight: bold; color: var(--primary); text-decoration: none;">
+                Гастрономические путешествия
+            </a>
+            <div class="nav-links">
+                <a href="/new-post">Новый пост</a>
+                <a href="/logout">Выйти</a>
+            </div>
         </div>
-    </div>
+    </nav>
 
-    <h2>Мои отзывы ({{len .Posts}})</h2>
-
-    {{if .Posts}}
-        {{range .Posts}}
-            <div class="post {{if .IsRecommended}}recommended-border{{end}}">
-                <div class="post-header">
-                    <h3 class="post-title">{{.Title}}</h3>
-                    <span class="rating">Оценка: {{.Rating}}/5 {{if .IsRecommended}}<span class="recommended">★ Рекомендую</span>{{end}}</span>
-                </div>
-                <div class="post-meta">
-                    <span>{{.Location}} • {{formatDate .CreatedAt}}</span>
-                </div>
-                <div class="post-content">
-                    {{truncate .Content 150}}
-                </div>
-                <div class="post-meta">
-                    👍 {{.Likes}} • 👎 {{.Dislikes}}
-                </div>
-                <div class="post-actions">
-                    <a href="/edit-post?id={{.ID}}" class="btn btn-edit">Редактировать</a>
-                    <form method="POST" style="display: inline;">
-                        <input type="hidden" name="delete" value="{{.ID}}">
-                        <button type="submit" class="btn btn-delete">Удалить</button>
-                    </form>
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <h1>Мой профиль: {{.Username}}</h1>
+            <a href="/new-post" class="btn btn-primary">Новый пост</a>
+        </div>
+        
+        <h2>Мои отзывы ({{len .Posts}})</h2>
+        
+        {{if .Posts}}
+            {{range .Posts}}
+            <div class="card fade-in">
+                <div class="card-body">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3 class="card-title">{{.Title}}</h3>
+                        <span style="color: var(--warning); font-weight: bold;">{{.Rating}}/5 {{if .IsRecommended}}<span style="color: var(--success);">★</span>{{end}}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+                        <span style="color: var(--gray);">{{.Location}} • {{.CreatedAt.Format "02.01.2006"}}</span>
+                        <span style="color: var(--gray);">👍 {{.Likes}} 👎 {{.Dislikes}}</span>
+                    </div>
+                    <p class="card-text">{{truncate .Content 200}}</p>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <a href="/edit-post?id={{.ID}}" class="btn btn-outline">Редактировать</a>
+                        <form method="POST" style="display: inline;">
+                            <input type="hidden" name="delete" value="{{.ID}}">
+                            <button type="submit" class="btn btn-danger">Удалить</button>
+                        </form>
+                    </div>
                 </div>
             </div>
+            {{end}}
+        {{else}}
+            <div class="card text-center" style="padding: 2rem;">
+                <h3>У вас пока нет отзывов</h3>
+                <p>Поделитесь своими впечатлениями о посещенных местах!</p>
+                <a href="/new-post" class="btn btn-primary">Создать первый отзыв</a>
+            </div>
         {{end}}
-    {{else}}
-        <p>У вас пока нет ни одного отзыва. <a href="/new-post">Создайте первый!</a></p>
-    {{end}}
+    </div>
 </body>
 </html>

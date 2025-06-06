@@ -37,6 +37,9 @@ func main() {
 	adminHandler := handlers.NewAdminHandler(repos.UserRepo, repos.PostRepo, tmpl)
 	appHandlers := handlers.NewAppHandlers(authHandler, repos.UserRepo, repos.PostRepo, adminHandler, tmpl)
 
+	fs := http.FileServer(http.Dir("static"))
+	http.Handle("/static/", http.StripPrefix("/static/", fs))
+
 	routes.Setup(appHandlers, authHandler, adminHandler)
 
 	fmt.Println("Сервер запущен на http://localhost:8081")

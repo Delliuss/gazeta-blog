@@ -2,14 +2,41 @@
 <html>
 <head>
     <title>Регистрация</title>
+    <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <h1>Регистрация</h1>
-    <form method="POST">
-        <input type="text" name="username" placeholder="Имя пользователя" required>
-        <input type="password" name="password" placeholder="Пароль" required>
-        <input type="submit" value="Зарегистрироваться">
-    </form>
-    <a href="/">На главную</a>
+    <nav class="navbar">
+        <div class="navbar-content">
+            <a href="/" style="font-size: 1.5rem; font-weight: bold; color: var(--primary); text-decoration: none;">
+                Гастрономические путешествия
+            </a>
+            <div class="nav-links">
+                <a href="/login">Войти</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="form-container fade-in">
+        <h2 style="text-align: center; margin-bottom: 1.5rem;">Регистрация</h2>
+        
+        <form method="POST">
+            <div class="form-group">
+                <label class="form-label">Имя пользователя</label>
+                <input type="text" name="username" class="form-control" required>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Пароль</label>
+                <input type="password" name="password" class="form-control" required>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.75rem;">Зарегистрироваться</button>
+        </form>
+        
+        <div style="text-align: center; margin-top: 1.5rem;">
+            <p>Уже есть аккаунт? <a href="/login">Войдите</a></p>
+            <p><a href="/">← На главную</a></p>
+        </div>
+    </div>
 </body>
 </html>
