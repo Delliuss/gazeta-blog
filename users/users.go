@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"gox2/models"
+	"gox2/utils"
 	"sync"
 )
 
@@ -33,7 +34,7 @@ func (r *UserRepository) GetUser(username string) (*models.User, error) {
 }
 
 func (r *UserRepository) CreateUser(username, password string) error {
-	hashedPass, err := models.HashPassword(password)
+	hashedPass, err := utils.HashPassword(password)
 	if err != nil {
 		return err
 	}
@@ -79,7 +80,7 @@ func (r *UserRepository) ensureAdminExists() error {
 	}
 
 	if !adminExists {
-		hashedPass, err := models.HashPassword("admin123")
+		hashedPass, err := utils.HashPassword("admin123")
 		if err != nil {
 			return fmt.Errorf("error hashing admin password: %v", err)
 		}
