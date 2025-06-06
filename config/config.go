@@ -15,7 +15,7 @@ type DBConfig struct {
 }
 
 func LoadDBConfig() (*DBConfig, error) {
-	// Установите значения по умолчанию
+
 	config := &DBConfig{
 		Host:     getEnv("DB_HOST", "localhost"),
 		Port:     getEnv("DB_PORT", "5432"),

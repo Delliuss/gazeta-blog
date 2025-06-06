@@ -4,7 +4,6 @@ import (
 	"gox2/models"
 )
 
-// LoadPosts загружает все посты из базы данных
 func (r *PostRepository) LoadPosts() ([]models.Post, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -37,7 +36,6 @@ func (r *PostRepository) LoadPosts() ([]models.Post, error) {
 	return posts, nil
 }
 
-// GetUserPosts возвращает посты пользователя
 func (r *PostRepository) GetUserPosts(username string) ([]models.Post, error) {
 	rows, err := r.db.Query(`
         SELECT id, title, content, image_url, location, rating, likes, dislikes,
@@ -69,7 +67,6 @@ func (r *PostRepository) GetUserPosts(username string) ([]models.Post, error) {
 	return posts, nil
 }
 
-// GetAllPosts возвращает все посты
 func (r *PostRepository) GetAllPosts() ([]models.Post, error) {
 	rows, err := r.db.Query("SELECT id, title, author FROM posts ORDER BY created_at DESC")
 	if err != nil {

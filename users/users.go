@@ -7,18 +7,15 @@ import (
 	"sync"
 )
 
-// UserRepository represents a repository for user operations
 type UserRepository struct {
 	db *sql.DB
 	mu sync.Mutex
 }
 
-// NewUserRepository creates a new UserRepository
 func NewUserRepository(db *sql.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-// GetUser returns a user by username
 func (r *UserRepository) GetUser(username string) (*models.User, error) {
 	var user models.User
 	err := r.db.QueryRow(`
@@ -35,7 +32,6 @@ func (r *UserRepository) GetUser(username string) (*models.User, error) {
 	return &user, nil
 }
 
-// CreateUser creates a new user
 func (r *UserRepository) CreateUser(username, password string) error {
 	hashedPass, err := models.HashPassword(password)
 	if err != nil {
@@ -49,7 +45,6 @@ func (r *UserRepository) CreateUser(username, password string) error {
 	return err
 }
 
-// ToggleUserBan toggles user ban status
 func (r *UserRepository) ToggleUserBan(username string) error {
 	_, err := r.db.Exec(
 		"UPDATE users SET is_banned = NOT is_banned WHERE username = $1 AND is_admin = FALSE",
@@ -58,7 +53,6 @@ func (r *UserRepository) ToggleUserBan(username string) error {
 	return err
 }
 
-// GetAllUsers returns all users
 func (r *UserRepository) GetAllUsers() ([]models.User, error) {
 	rows, err := r.db.Query("SELECT username, is_admin, is_banned FROM users ORDER BY username")
 	if err != nil {
@@ -77,7 +71,6 @@ func (r *UserRepository) GetAllUsers() ([]models.User, error) {
 	return users, nil
 }
 
-// ensureAdminExists checks if admin exists and creates one if not
 func (r *UserRepository) ensureAdminExists() error {
 	var adminExists bool
 	err := r.db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = 'admin')").Scan(&adminExists)

@@ -8,9 +8,6 @@ import (
 	"gox2/models"
 )
 
-// HomePage отображает главную страницу со списком постов
-// Поддерживает поиск по заголовку и местоположению через параметр ?search=
-// GET /
 func (h *AppHandlers) HomePage(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("username"); err == nil {
 		user, err := h.users.GetUser(cookie.Value)
@@ -59,9 +56,6 @@ func (h *AppHandlers) HomePage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// NewPostPage отображает форму создания нового поста
-// GET /new-post - форма
-// POST /new-post - создание поста
 func (h *AppHandlers) NewPostPage(w http.ResponseWriter, r *http.Request) {
 	username, err := r.Cookie("username")
 	if err != nil {
@@ -95,9 +89,6 @@ func (h *AppHandlers) NewPostPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// EditPostPage отображает форму редактирования поста
-// GET /edit-post?id=123 - форма
-// POST /edit-post - обновление поста
 func (h *AppHandlers) EditPostPage(w http.ResponseWriter, r *http.Request) {
 	username, err := r.Cookie("username")
 	if err != nil {
@@ -162,8 +153,6 @@ func (h *AppHandlers) EditPostPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// LikeHandler обрабатывает лайки/дизлайки постов
-// POST /like?post_id=123&action=like
 func (h *AppHandlers) LikeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)

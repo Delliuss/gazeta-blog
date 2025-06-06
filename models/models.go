@@ -6,7 +6,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// User представляет пользователя системы
 type User struct {
 	Username string
 	Password string
@@ -14,7 +13,6 @@ type User struct {
 	IsBanned bool
 }
 
-// Post представляет пост/отзыв
 type Post struct {
 	ID            int
 	Title         string
@@ -29,7 +27,6 @@ type Post struct {
 	IsRecommended bool
 }
 
-// hashPassword хеширует пароль
 func HashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	return string(bytes), err

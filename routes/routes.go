@@ -8,7 +8,6 @@ import (
 )
 
 func Setup(h *handlers.AppHandlers, auth *authentication.AuthHandler, admin *admin.AdminHandler) {
-	// Основные маршруты
 	http.HandleFunc("/", h.HomePage)
 	http.HandleFunc("/register", auth.RegisterPage)
 	http.HandleFunc("/login", auth.LoginPage)
@@ -18,7 +17,6 @@ func Setup(h *handlers.AppHandlers, auth *authentication.AuthHandler, admin *adm
 	http.HandleFunc("/edit-post", h.EditPostPage)
 	http.HandleFunc("/like", h.LikeHandler)
 
-	// Админские маршруты
 	http.HandleFunc("/admin", h.AdminOnly(admin.AdminPanel))
 	http.HandleFunc("/admin/toggle-ban", h.AdminOnly(admin.ToggleBanUser))
 	http.HandleFunc("/admin/delete-post", h.AdminOnly(admin.DeletePost))

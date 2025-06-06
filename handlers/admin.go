@@ -2,7 +2,6 @@ package handlers
 
 import "net/http"
 
-// AdminOnly middleware проверяет права администратора
 func (h *AppHandlers) AdminOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, err := r.Cookie("username")

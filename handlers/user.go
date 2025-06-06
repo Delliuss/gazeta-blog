@@ -6,9 +6,6 @@ import (
 	"gox2/models"
 )
 
-// ProfilePage отображает профиль пользователя с его постами
-// GET /profile - просмотр профиля
-// POST /profile?delete=123 - удаление поста
 func (h *AppHandlers) ProfilePage(w http.ResponseWriter, r *http.Request) {
 	username, err := r.Cookie("username")
 	if err != nil {

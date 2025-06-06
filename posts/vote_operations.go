@@ -4,14 +4,12 @@ import (
 	"fmt"
 )
 
-// AddVote добавляет голос за пост
 func (r *PostRepository) AddVote(postID, username, action string) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
 
-	// Проверяем, не голосовал ли уже пользователь
 	var exists bool
 	err = tx.QueryRow(`
         SELECT EXISTS(
@@ -29,7 +27,6 @@ func (r *PostRepository) AddVote(postID, username, action string) error {
 		return fmt.Errorf("пользователь уже голосовал за этот пост")
 	}
 
-	// Обновляем счетчик
 	var column string
 	if action == "like" {
 		column = "likes"
@@ -49,7 +46,6 @@ func (r *PostRepository) AddVote(postID, username, action string) error {
 		return err
 	}
 
-	// Записываем голос
 	_, err = tx.Exec(`
         INSERT INTO post_votes (post_id, username, vote_type)
         VALUES ($1, $2, $3)`,

@@ -8,13 +8,11 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// DB represents a database connection wrapper
 type DB struct {
 	*sql.DB
 	mu sync.Mutex
 }
 
-// New creates a new database connection
 func New(connStr string) (*DB, error) {
 	sqlDB, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -33,9 +31,7 @@ func New(connStr string) (*DB, error) {
 	return db, nil
 }
 
-// initialize creates tables and ensures proper schema
 func (db *DB) initialize() error {
-	// Create tables
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
 			username TEXT NOT NULL PRIMARY KEY,
@@ -72,7 +68,6 @@ func (db *DB) initialize() error {
 		return fmt.Errorf("failed to create tables: %v", err)
 	}
 
-	// Add columns if they don't exist
 	db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE")
 	db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE")
 

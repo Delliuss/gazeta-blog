@@ -9,7 +9,6 @@ import (
 	"gox2/users"
 )
 
-// AppHandlers содержит все обработчики приложения
 type AppHandlers struct {
 	auth  *authentication.AuthHandler
 	users *users.UserRepository
@@ -18,7 +17,6 @@ type AppHandlers struct {
 	tmpl  *template.Template
 }
 
-// NewAppHandlers создает новый экземпляр AppHandlers
 func NewAppHandlers(
 	auth *authentication.AuthHandler,
 	users *users.UserRepository,

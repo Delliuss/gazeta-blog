@@ -4,7 +4,6 @@ import (
 	"gox2/models"
 )
 
-// CreatePost создает новый пост
 func (r *PostRepository) CreatePost(title, content, imageURL, location, author string, rating int, isRecommended bool) error {
 	_, err := r.db.Exec(`
         INSERT INTO posts
@@ -15,7 +14,6 @@ func (r *PostRepository) CreatePost(title, content, imageURL, location, author s
 	return err
 }
 
-// GetPost возвращает пост по ID
 func (r *PostRepository) GetPost(postID string) (*models.Post, error) {
 	var post models.Post
 	err := r.db.QueryRow(`
@@ -32,7 +30,6 @@ func (r *PostRepository) GetPost(postID string) (*models.Post, error) {
 	return &post, nil
 }
 
-// UpdatePost обновляет пост
 func (r *PostRepository) UpdatePost(postID, title, content, imageURL, location string, rating int, isRecommended bool) error {
 	_, err := r.db.Exec(`
         UPDATE posts SET
@@ -48,7 +45,6 @@ func (r *PostRepository) UpdatePost(postID, title, content, imageURL, location s
 	return err
 }
 
-// DeletePost удаляет пост по ID
 func (r *PostRepository) DeletePost(postID string) error {
 	tx, err := r.db.Begin()
 	if err != nil {
